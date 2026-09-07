@@ -1,0 +1,243 @@
+"""
+Command Line Interface for EVIDRA Fact Knowledge Layer.
+Built using standard library argparse for zero-dependency execution.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+from pathlib import Path
+from typing import Optional
+
+from src.db.ledger import DocumentRecord, EvidenceLedger
+from src.observability.trace import RunContext, TraceLogger
+
+
+def compute_file_hash(filepath: Path) -> str:
+    """Compute SHA-256 hash of a file."""
+    hasher = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(65536):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def handle_process(args: argparse.Namespace) -> int:
+    """Execute the process command on a PDF file or directory."""
+    target_path = Path(args.path)
+    if not target_path.exists():
+        print(f"Error: Target path '{target_path}' does not exist.", file=sys.stderr)
+        return 1
+
+    pdf_files: list[Path] = []
+    if target_path.is_file():
+        if target_path.suffix.lower() == ".pdf":
+            pdf_files.append(target_path)
+        else:
+            print(f"Error: Target file '{target_path}' is not a PDF.", file=sys.stderr)
+            return 1
+    elif target_path.is_dir():
+        seen = set(); pdf_files = [p for p in sorted(target_path.iterdir()) if p.is_file() and p.suffix.lower() == ".pdf" and not (str(p.resolve()).lower() in seen or seen.add(str(p.resolve()).lower()))]
+
+    if not pdf_files:
+        print(f"Warning: No PDF files found in '{target_path}'.", file=sys.stderr)
+        return 1
+
+    # Initialize Run Context
+    runs_dir = Path(args.out_dir) if args.out_dir else Path("runs")
+    ctx = RunContext(runs_root=runs_dir)
+    ctx.init_run(input_files=[p.name for p in pdf_files])
+    tracer = TraceLogger(ctx.trace_log_path)
+    tracer.log_step(
+        step_name="document_ingestion",
+        agent_name="cli_pipeline",
+        input_payload={"pdf_files": [p.name for p in pdf_files]},
+        output_payload={"documents_ingested": len(pdf_files)},
+        latency_ms=0.0,
+    )
+    ledger = EvidenceLedger(ctx.db_path)
+
+    # Ingest document records into ledger
+    for idx, pdf_path in enumerate(pdf_files, start=1):
+        doc_id = f"DOC-{idx:03d}"
+        file_hash = compute_file_hash(pdf_path)
+        dest_path = ctx.documents_dir / pdf_path.name
+        with open(pdf_path, "rb") as src_f, open(dest_path, "wb") as dst_f:
+            dst_f.write(src_f.read())
+
+        doc_record = DocumentRecord(
+            document_id=doc_id,
+            filename=pdf_path.name,
+            file_hash=file_hash,
+            page_count=1,  # Base page count, updated by parser in D2
+        )
+        ledger.insert_document(doc_record)
+
+    summary = ledger.get_job_summary()
+    ctx.complete_run(summary=summary)
+
+    # Print summary table
+    print("\n" + "=" * 60)
+    print("  EVIDRA Fact Knowledge Layer - Job Summary")
+    print("=" * 60)
+    print(f"  Job ID:            {ctx.job_id}")
+    print(f"  Run Directory:     {ctx.run_dir}")
+    print(f"  Documents Ingested:{len(pdf_files)}")
+    print(f"  Evidence Chunks:   {summary['evidence_chunks_count']}")
+    print(f"  Fact Candidates:   {summary['fact_candidates_count']}")
+    print(f"  Decisions Made:    {summary['decisions_count']}")
+    print("-" * 60)
+    print(f"  Corroborated:      {summary['verdicts']['CORROBORATED']}")
+    print(f"  Contradictions:    {summary['verdicts']['CONTRADICTION']}")
+    print(f"  Reconciled:        {summary['verdicts']['RECONCILED']}")
+    print(f"  Unresolved:        {summary['verdicts']['UNRESOLVED']}")
+    print("=" * 60 + "\n")
+
+    return 0
+
+
+def handle_inspect(args: argparse.Namespace) -> int:
+    """Execute the inspect command to review decisions for a job."""
+    runs_dir = Path(args.runs_dir) if args.runs_dir else Path("runs")
+    job_dir = runs_dir / args.job_id
+    db_path = job_dir / "ledger.db"
+
+    if not db_path.exists():
+        print(f"Error: Ledger database not found for job '{args.job_id}' at '{db_path}'.", file=sys.stderr)
+        return 1
+
+    ledger = EvidenceLedger(db_path)
+    decisions = ledger.get_decisions(verdict_filter=args.verdict)
+
+    if not decisions:
+        filter_str = f" with verdict '{args.verdict}'" if args.verdict else ""
+        print(f"No decisions found for job '{args.job_id}'{filter_str}.")
+        return 0
+
+    print("\n" + "=" * 75)
+    print(f"  Decisions for Job: {args.job_id}")
+    print("=" * 75)
+
+    for d in decisions:
+        print(f"  Decision ID: {d['decision_id']}  |  Verdict: [{d['verdict']}]  |  Strength: {d['decision_strength']}")
+        print(f"  Entity:      {d['entity']}  |  Attribute: {d['attribute']}  |  Period: {d['period_id']}")
+        print(f"  Reasoning:   {d['reasoning_summary']}")
+        print("-" * 75)
+
+    return 0
+
+
+def handle_report(args: argparse.Namespace) -> int:
+    """Execute the report command to print or export generated reports."""
+    runs_dir = Path(args.runs_dir) if args.runs_dir else Path("runs")
+    job_dir = runs_dir / args.job_id
+
+    if not job_dir.exists():
+        print(f"Error: Job directory '{job_dir}' not found.", file=sys.stderr)
+        return 1
+
+    if args.format == "json":
+        manifest_path = job_dir / "run.json"
+        if manifest_path.exists():
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                print(f.read())
+            return 0
+        else:
+            print("Error: run.json not found.", file=sys.stderr)
+            return 1
+    else:
+        report_name = f"{args.type.lower().replace('-', '_')}.md"
+        report_path = job_dir / "reports" / report_name
+        if report_path.exists():
+            with open(report_path, "r", encoding="utf-8") as f:
+                print(f.read())
+            return 0
+        else:
+            # Fallback to printing manifest summary
+            manifest_path = job_dir / "run.json"
+            if manifest_path.exists():
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                print(f"# Job Summary: {args.job_id}\n")
+                print(f"- Status: {data.get('status')}")
+                print(f"- Input Files: {', '.join(data.get('input_files', []))}")
+                print(f"- Summary: {data.get('summary')}")
+                return 0
+            print(f"Error: Report '{report_name}' not found for job '{args.job_id}'.", file=sys.stderr)
+            return 1
+
+
+def handle_serve(args: argparse.Namespace) -> int:
+    """Launch the FastAPI server via uvicorn."""
+    try:
+        import uvicorn
+        print(f"Starting EVIDRA API server on http://{args.host}:{args.port} (Swagger docs at /docs)...")
+        uvicorn.run("src.api.server:app", host=args.host, port=args.port, reload=args.reload)
+        return 0
+    except ImportError:
+        print("Error: 'uvicorn' is required to run the server. Install it with 'pip install uvicorn'.", file=sys.stderr)
+        return 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build and configure the CLI argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="evidra",
+        description="EVIDRA - Evidence-Driven Architecture for Fact Validation and Knowledge Reasoning",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
+
+    # process subcommand
+    proc_parser = subparsers.add_parser("process", help="Process a PDF file or directory of PDFs")
+    proc_parser.add_argument("path", help="Path to PDF file or directory containing PDFs")
+    proc_parser.add_argument("--out-dir", default="runs", help="Base directory for job runs (default: runs)")
+    proc_parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+
+    # inspect subcommand
+    insp_parser = subparsers.add_parser("inspect", help="Inspect decisions and traces for a job run")
+    insp_parser.add_argument("job_id", help="Job identifier (e.g. JOB-20260907-XXXXXX)")
+    insp_parser.add_argument("--verdict", choices=["CORROBORATED", "CONTRADICTION", "RECONCILED", "UNRESOLVED"], help="Filter by verdict")
+    insp_parser.add_argument("--runs-dir", default="runs", help="Base directory for job runs (default: runs)")
+
+    # report subcommand
+    rep_parser = subparsers.add_parser("report", help="Display or export job reports")
+    rep_parser.add_argument("job_id", help="Job identifier")
+    rep_parser.add_argument("--type", default="summary", choices=["summary", "contradictions", "unresolved"], help="Report type")
+    rep_parser.add_argument("--format", default="markdown", choices=["markdown", "json"], help="Output format")
+    rep_parser.add_argument("--runs-dir", default="runs", help="Base directory for job runs (default: runs)")
+
+    # serve subcommand
+    srv_parser = subparsers.add_parser("serve", help="Start the FastAPI server")
+    srv_parser.add_argument("--host", default="127.0.0.1", help="Host binding (default: 127.0.0.1)")
+    srv_parser.add_argument("--port", type=int, default=8000, help="Port binding (default: 8000)")
+    srv_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """Main CLI entry point."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    if args.command == "process":
+        return handle_process(args)
+    elif args.command == "inspect":
+        return handle_inspect(args)
+    elif args.command == "report":
+        return handle_report(args)
+    elif args.command == "serve":
+        return handle_serve(args)
+    else:
+        parser.print_help()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

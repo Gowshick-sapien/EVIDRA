@@ -8,3 +8,4 @@ pdfplumber
 langchain-ollama
 python-dateutil
 pytest
+python-multipart>=0.0.9

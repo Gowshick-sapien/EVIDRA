@@ -1,0 +1,134 @@
+﻿-- Pragmas for performance, concurrency, and data integrity
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
+
+-- ============================================================================
+-- 1. EVIDENCE LAYER (Source Provenance)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS documents (
+    document_id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    file_hash TEXT NOT NULL UNIQUE,
+    page_count INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS evidence_chunks (
+    chunk_id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL,
+    chunk_type TEXT CHECK(chunk_type IN ('text', 'table', 'figure')),
+    bounding_box TEXT NOT NULL, -- JSON array: [x0, y0, x1, y1]
+    content TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(document_id) REFERENCES documents(document_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_doc_page ON evidence_chunks(document_id, page_number);
+
+-- ============================================================================
+-- 2. FACT CONSTRUCTION LAYER (Claims & Normalization)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS observations (
+    observation_id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    entity TEXT NOT NULL,
+    attribute TEXT NOT NULL,
+    raw_value TEXT NOT NULL,
+    observation_type TEXT CHECK(observation_type IN ('numerical', 'semantic', 'event')),
+    temporal_scope TEXT NOT NULL,
+    provenance_status TEXT CHECK(provenance_status IN ('ENTAILED', 'HALLUCINATED', 'AMBIGUOUS')),
+    confidence REAL NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(chunk_id) REFERENCES evidence_chunks(chunk_id) ON DELETE CASCADE,
+    FOREIGN KEY(document_id) REFERENCES documents(document_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_observations_entity_attr ON observations(entity, attribute);
+
+CREATE TABLE IF NOT EXISTS fact_candidates (
+    fact_id TEXT PRIMARY KEY,
+    observation_id TEXT NOT NULL UNIQUE,
+    normalized_value TEXT NOT NULL,
+    normalized_unit TEXT NOT NULL,
+    normalized_currency TEXT NOT NULL,
+    period_start TEXT NOT NULL, -- ISO 8601 YYYY-MM-DD
+    period_end TEXT NOT NULL,   -- ISO 8601 YYYY-MM-DD
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(observation_id) REFERENCES observations(observation_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_facts_period ON fact_candidates(period_start, period_end);
+
+CREATE TABLE IF NOT EXISTS fact_groups (
+    group_id TEXT PRIMARY KEY,
+    entity TEXT NOT NULL,
+    attribute TEXT NOT NULL,
+    period_id TEXT NOT NULL,
+    member_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id TEXT NOT NULL,
+    fact_id TEXT NOT NULL,
+    PRIMARY KEY(group_id, fact_id),
+    FOREIGN KEY(group_id) REFERENCES fact_groups(group_id) ON DELETE CASCADE,
+    FOREIGN KEY(fact_id) REFERENCES fact_candidates(fact_id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- 3. DECISION ENGINE LAYER (Reasoning, Hypotheses & Verdicts)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS hypotheses (
+    hypothesis_id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    explanation_type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    likelihood_score REAL NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(group_id) REFERENCES fact_groups(group_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS validator_results (
+    result_id TEXT PRIMARY KEY,
+    hypothesis_id TEXT NOT NULL,
+    validator_type TEXT NOT NULL,
+    outcome TEXT CHECK(outcome IN ('SUPPORTED', 'REFUTED', 'INCONCLUSIVE')),
+    details_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(hypothesis_id) REFERENCES hypotheses(hypothesis_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS decisions (
+    decision_id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL UNIQUE,
+    verdict TEXT CHECK(verdict IN ('CORROBORATED', 'CONTRADICTION', 'RECONCILED', 'UNRESOLVED')),
+    decision_strength TEXT CHECK(decision_strength IN ('HIGH', 'MEDIUM', 'LOW', 'INSUFFICIENT')),
+    reasoning_summary TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(group_id) REFERENCES fact_groups(group_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_decisions_verdict ON decisions(verdict);
+
+CREATE TABLE IF NOT EXISTS decision_traces (
+    trace_id TEXT PRIMARY KEY,
+    decision_id TEXT NOT NULL,
+    step_name TEXT NOT NULL,
+    agent_name TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    output_json TEXT NOT NULL,
+    execution_time_ms REAL NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(decision_id) REFERENCES decisions(decision_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_decision ON decision_traces(decision_id);

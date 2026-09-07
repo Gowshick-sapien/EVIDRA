@@ -16,7 +16,10 @@ EVIDRA/
 |-- docs/                       # Project Documentation
 |   |-- PROJECT_IDEATION.md         # Core philosophical and scope definitions
 |   |-- TECH_STACK.md               # Frozen technology and dependency decisions
-|   |-- DELIVERABLES.md             # Implementation phases and deliverables
+|   |-- DELIVERABLES_DEFINITION.md  # Implementation phases and deliverables definition
+|   |-- deliverable_plans/          # Granular implementation & testing plans per deliverable
+|   |   |-- D1_IMPLEMENTATION_PLAN.md
+|   |   +-- D0_AND_D1_TESTING_AND_VERIFICATION_PLAN.md
 |   |-- SRS.md                      # Software Requirements Specification
 |   |-- ARCHITECTURE.md             # 4-Layer system architecture
 |   |-- ME_AI_CHAT.sty              # AI Chat Logs 1

@@ -1,4 +1,6 @@
-﻿# Fact Knowledge Layer (EVIDRA) -- Master Deliverables Specification
+# EVIDRA: Evidence-Driven Architecture for Fact Validation and Knowledge Reasoning
+
+## Master Deliverables Specification
 
 ---
 

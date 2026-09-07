@@ -1,4 +1,6 @@
-﻿# Fact Knowledge Layer (EVIDRA) -- System Architecture Specification
+# EVIDRA: Evidence-Driven Architecture for Fact Validation and Knowledge Reasoning
+
+## System Architecture Specification
 
 ---
 

@@ -1,4 +1,6 @@
-﻿# Fact Knowledge Layer (EVIDRA) -- Software Requirements Specification (SRS)
+# EVIDRA: Evidence-Driven Architecture for Fact Validation and Knowledge Reasoning
+
+## Software Requirements Specification (SRS)
 
 ---
 
