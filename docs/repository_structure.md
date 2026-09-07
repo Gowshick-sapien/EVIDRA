@@ -1,23 +1,27 @@
-﻿# Repository Structure
+# Repository Structure
 
 This document defines the complete base repository structure for the Fact Knowledge Layer project. This layout enforces the strict separation of concerns outlined in the architecture and provides a scalable foundation for implementation.
 
 ## Directory Tree
 
-```text
+`	ext
 EVIDRA/
 |-- .gitignore                  # Git ignore rules
 |-- README.md                   # Viewer-centric project overview
-|-- PROJECT_IDEATION.md         # Core philosophical and scope definitions
-|-- TECH_STACK.md               # Frozen technology and dependency decisions
-|-- DELIVERABLES.md             # Implementation phases and deliverables
-|-- SRS.md                      # Software Requirements Specification
-|-- ARCHITECTURE.md             # 4-Layer system architecture
-|-- repository_structure.md     # This document
 |-- requirements.txt            # Python dependencies (Ollama, PyMuPDF, FastAPI, etc.)
 |-- pyproject.toml              # Build and package configuration
 |-- sample_docs/                # Directory for input PDF test cases
 |-- runs/                       # Output directory for job artifacts (SQLite, JSONL, Markdown)
+|
+|-- docs/                       # Project Documentation
+|   |-- PROJECT_IDEATION.md         # Core philosophical and scope definitions
+|   |-- TECH_STACK.md               # Frozen technology and dependency decisions
+|   |-- DELIVERABLES.md             # Implementation phases and deliverables
+|   |-- SRS.md                      # Software Requirements Specification
+|   |-- ARCHITECTURE.md             # 4-Layer system architecture
+|   |-- ME_AI_CHAT.sty              # AI Chat Logs 1
+|   |-- ME_AI_CHAT_2.sty            # AI Chat Logs 2
+|   +-- repository_structure.md     # This document
 |
 |-- src/                        # Core Application Code
 |   |-- __init__.py
@@ -91,15 +95,16 @@ EVIDRA/
         |-- test_contradiction.py
         |-- test_reconciliation.py
         +-- test_failure_handling.py
-```
+`
 
 ## Module Responsibilities
 
-1. **`src/pdf/`**: Extracts raw text, tables, and bounding boxes. Operates with zero semantic reasoning.
-2. **`src/extraction/`**: Contains LLM prompts that convert text/tables into structured observations. Enforces Pydantic boundaries.
-3. **`src/verification/`**: Houses independent agents that verify claims against raw evidence and normalizes numbers/dates deterministically.
-4. **`src/matching/`**: Uses local embeddings to group related facts.
-5. **`src/decision/`**: The core LangGraph workflow. Houses the hypothesis generator, challenge skeptic, and final deterministic policy.
-6. **`src/db/`**: Isolates all SQLite logic. Maintains the Evidence Ledger.
-7. **`src/api/` & `src/cli/`**: The human/machine interfaces for job submission and inspection.
-8. **`src/observability/`**: Writes artifacts to the `runs/` directory for full transparency.
+1. **src/pdf/**: Extracts raw text, tables, and bounding boxes. Operates with zero semantic reasoning.
+2. **src/extraction/**: Contains LLM prompts that convert text/tables into structured observations. Enforces Pydantic boundaries.
+3. **src/verification/**: Houses independent agents that verify claims against raw evidence and normalizes numbers/dates deterministically.
+4. **src/matching/**: Uses local embeddings to group related facts.
+5. **src/decision/**: The core LangGraph workflow. Houses the hypothesis generator, challenge skeptic, and final deterministic policy.
+6. **src/db/**: Isolates all SQLite logic. Maintains the Evidence Ledger.
+7. **src/api/ & src/cli/**: The human/machine interfaces for job submission and inspection.
+8. **src/observability/**: Writes artifacts to the 
+uns/ directory for full transparency.
