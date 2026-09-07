@@ -219,10 +219,22 @@ class ExtractionPipeline:
                 latency_ms=latency_ms,
             )
 
+        # 6. Execute D3 Verification, Normalization, and Fact Grouping Pipeline
+        # pyrefly: ignore [missing-import]
+        from src.verification.pipeline import VerificationPipeline
+        verif_pipeline = VerificationPipeline(
+            ledger=self.ledger,
+            tracer=self.tracer,
+            reasoning_service=self.llm,
+        )
+        verif_res = verif_pipeline.process_observations(document_id=document_id)
+
         return {
             "document_id": document_id,
             "page_count": max_page,
             "evidence_chunks_count": chunks_inserted,
             "observations_count": observations_inserted,
+            "fact_candidates_count": verif_res.get("candidates_count", 0),
+            "fact_groups_count": verif_res.get("groups_count", 0),
             "latency_ms": round(latency_ms, 2),
         }

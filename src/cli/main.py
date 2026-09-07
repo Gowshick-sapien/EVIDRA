@@ -104,6 +104,7 @@ def handle_process(args: argparse.Namespace) -> int:
     print(f"  Evidence Chunks:   {summary['evidence_chunks_count']}")
     print(f"  Observations:      {summary['observations_count']}")
     print(f"  Fact Candidates:   {summary['fact_candidates_count']}")
+    print(f"  Fact Groups:       {summary['fact_groups_count']}")
     print(f"  Decisions Made:    {summary['decisions_count']}")
     print("-" * 60)
     print(f"  Corroborated:      {summary['verdicts']['CORROBORATED']}")

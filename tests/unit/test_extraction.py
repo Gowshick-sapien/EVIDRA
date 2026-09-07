@@ -24,6 +24,14 @@ class MockReasoningService:
     """Mock LLM provider returning deterministic observation bundles without network access."""
 
     def generate_structured(self, prompt, response_model, system_prompt=None, max_retries=3):
+        # pyrefly: ignore [missing-import]
+        from src.verification.verifier import VerificationVerdict
+        # pyrefly: ignore [missing-import]
+        from src.verification.context import FinancialContext
+        if response_model == VerificationVerdict:
+            return VerificationVerdict(status="ENTAILED", confidence=1.0, explanation="Entailed test observation")
+        if response_model == FinancialContext:
+            return FinancialContext(accounting_basis="IND_AS", filing_type="PROSPECTUS")
         return ObservationBundle(
             numerical_observations=[
                 NumericalObservation(
