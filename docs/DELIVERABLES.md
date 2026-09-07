@@ -2,6 +2,15 @@
 
 This document outlines the concrete deliverables for the Fact Knowledge Layer prototype, mapped directly to the Implementable Scope defined in the project ideation.
 
+## D0: Prerequisite and Environment Verification
+**Goal:** Ensure the local environment is fully prepared before starting implementation, minimizing runtime and external dependency issues.
+* **D0.1 Python Environment Check:** Verification of Python 3.11+ installation and successful installation of all core packages from 
+equirements.txt.
+* **D0.2 Ollama Runtime Check:** Verification that the Ollama local daemon is installed, actively running, and accessible via local HTTP port.
+* **D0.3 LLM Model Pull Verification:** Verification that the specific primary reasoning model (qwen2.5:7b-instruct) is pulled and successfully loads into memory.
+* **D0.4 Embedding Model Cache Check:** Verification that sentence-transformers can successfully fetch, cache, and initialize the BAAI/bge-small-en-v1.5 model for candidate matching.
+* **D0.5 External Binary Check (Optional):** Verification of Tesseract OCR binary availability (only if the scanned-document fallback path is invoked).
+
 ## D1: Core Infrastructure and Evidence Ledger
 **Goal:** Establish the foundational storage, API, and CLI components.
 * **D1.1 SQLite Evidence Ledger:** Implementation of the relational schema for documents, evidence chunks, observations, fact candidates, fact groups, hypotheses, decisions, and traces.
