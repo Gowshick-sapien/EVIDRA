@@ -1,341 +1,461 @@
-# Fact Knowledge Layer -- Tech Stack Decisions
+﻿# Fact Knowledge Layer -- Tech Stack Decisions
 
 ---
 
 ## 1. Overview
 
-This document details every technology decision for the Fact Knowledge Layer project, including the rationale, alternatives considered, and how each choice maps to the system architecture. The guiding principle is:
+This document details every technology decision for the Fact Knowledge Layer prototype, including the concrete rationale, frozen selections, alternatives considered, and how each choice maps to the system architecture. The guiding principle is:
 
 > Build a clean, structured, explainable prototype -- not an overengineered production system.
 
-The tech stack is deliberately conservative. Every tool earns its place by directly serving the evidence-centric architecture. No technology is included for novelty.
+The tech stack is deliberately conservative, frozen, and free of ambiguous "A or B" choices. Every tool earns its place by directly serving the evidence-centric architecture. No technology is included for novelty.
 
 ---
 
-## 2. Language
+## 2. Language: Python 3.11
 
-| Decision | **Python** |
-|----------|-----------|
-| Version | 3.11+ |
-| Rationale | Strongest ecosystem for PDF processing, LLM integration, data manipulation, and scientific computing. Every major library in the pipeline (PDF parsers, LLM clients, embedding models, web frameworks, orchestration) has first-class Python support. |
-| Alternatives Considered | None seriously. The problem domain (PDF parsing, NLP, LLM orchestration) is overwhelmingly Python-native. |
+| Decision | Python 3.11 (3.11+ compatible) |
+|---|---|
+| Target Runtime | Python 3.11 for submission reproducibility (3.12 supported for local development) |
+| Rationale | Strongest ecosystem for PDF processing, local LLM integration, data manipulation, and structured validation. Every major library across the pipeline (PyMuPDF, pdfplumber, LangGraph, Pydantic, FastAPI, sentence-transformers) is Python-native. |
+| Alternatives Considered | None. The domain is overwhelmingly Python-native. |
 
 ---
 
-## 3. LLM Runtime
+## 3. LLM Runtime and Model
 
-| Decision | **Ollama (local)** |
-|----------|-------------------|
-| Rationale | Avoids dependency on proprietary APIs. Makes the reasoning pipeline fully reproducible, cost-controlled, and runnable offline. The evaluator can run the system without needing API keys or paid accounts. |
-| Assignment Alignment | The assignment states: "Keep credentials out of the repository. If the project requires a paid service, include enough sample output." Using a local LLM eliminates this concern entirely. |
-| Trade-off | Local models are weaker than commercial APIs (GPT-4, Claude) at complex financial language, nuanced negation, and long-context reasoning. The architecture compensates by making LLM failure recoverable -- uncertain outputs become `UNRESOLVED`, not wrong verdicts. |
+### LLM Runtime: Ollama
 
-### Model Selection
+| Decision | Ollama (Local) |
+|---|---|
+| Rationale | Locally runnable and cost-controlled. Avoids dependency on proprietary cloud APIs, credential management, and recurring API costs. The evaluator can run the system without API keys or paid accounts. |
+| Reproducibility Note | Local LLM inference is cost-controlled and offline-capable, though not strictly bit-level deterministic across different GPU/CPU architectures. The pipeline protects against stochastic outputs through strict Pydantic validation and defensive fallback to UNRESOLVED. |
+| Trade-off | Open-weight local models are less capable at zero-shot financial reasoning than frontier cloud models. The architecture compensates by scoping the LLM strictly to semantic reasoning, keeping arithmetic, date normalization, and policy decisions in deterministic code. |
 
-| Decision | **Qwen / Llama (via Ollama)** |
-|----------|------------------------------|
-| Rationale | Both are strong open-weight models available through Ollama. The architecture is model-agnostic -- agents call a `ReasoningService` abstraction, not Ollama directly. The model can be swapped without code changes. |
-| Recommendation | Start with a model that supports structured JSON output well (Qwen2.5 or Llama 3.1 at 7B/8B parameter range for feasible local inference). |
-| Scaling Path | The `LLMProvider` abstraction allows future swap to commercial APIs or larger models without architectural changes. |
+### Model Selection: Qwen2.5 7B Instruct (Primary)
+
+| Decision | Qwen2.5 7B Instruct (Default) / Qwen2.5 14B Instruct (Upgrade Path) |
+|---|---|
+| Primary Model | `qwen2.5:7b-instruct` |
+| Upgrade Model | `qwen2.5:14b-instruct` (if host hardware supports higher VRAM/compute) |
+| Why Qwen2.5 | Benchmark-leading performance on structured JSON generation, instruction following, constrained extraction, table comprehension, and multilingual tokens. It acts as a structured reasoning worker rather than a conversational chatbot. |
+| Excluded Alternatives | Llama 3.1 8B was evaluated but exhibits higher JSON parse failure rates and weaker tabular reasoning in dense financial disclosures compared to Qwen2.5. |
 
 ### Provider Abstraction
 
-```
-LLMProvider
-   |
-   +-- OllamaProvider
-   |     +-- Qwen
-   |     +-- Llama
-   |
-   +-- Future provider (OpenAI, Anthropic, etc.)
-```
+All reasoning calls are mediated through an abstract `ReasoningService`. Agents do not interact with Ollama directly:
 
-Agents call:
-
-```
-ReasoningService.extract()
-ReasoningService.verify()
-ReasoningService.reconcile()
-ReasoningService.challenge()
+```text
+                  ReasoningService
+                         |
+                 +-------+-------+
+                 |               |
+           OllamaProvider  MockProvider (Testing)
+                 |
+         Qwen2.5 Instruct
 ```
 
-They never know what model or provider is behind the interface.
+Specialist methods include:
+- `ReasoningService.extract()`
+- `ReasoningService.verify()`
+- `ReasoningService.reconcile()`
+- `ReasoningService.challenge()`
 
 ---
 
-## 4. Embedding Model
+## 4. Embedding Model: sentence-transformers + BGE-Small
 
-| Decision | **Local embedding model (via Ollama or sentence-transformers)** |
-|----------|---------------------------------------------------------------|
-| Purpose | Entity canonicalization, attribute matching, semantic similarity for fact grouping. |
-| Candidates | `nomic-embed-text` (via Ollama), `all-MiniLM-L6-v2` or `bge-small-en` (via sentence-transformers). |
-| Rationale | Must run locally to maintain the zero-external-dependency principle. Embedding is used for candidate matching (blocking), not as the final arbiter -- the LLM or deterministic logic makes the decision. |
-| Trade-off | Local embeddings are less capable than commercial embedding APIs, but for the blocking/candidate-generation role, they are sufficient. |
-
----
-
-## 5. PDF Processing
-
-### Primary Parser
-
-| Decision | **pdfplumber** |
-|----------|---------------|
-| Purpose | Text extraction with positional information, table detection and extraction, page-level segmentation. |
-| Rationale | Provides both text extraction and table extraction in a single library. Preserves character-level coordinates, which supports evidence anchoring (page, position). Handles most well-formed digital PDFs reliably. |
-| Alternative | **PyMuPDF (fitz)** -- faster raw text extraction, better for large documents. Can be used alongside pdfplumber if performance becomes an issue. |
-
-### Table Extraction
-
-| Decision | **pdfplumber table extraction** (primary), with **camelot** as fallback |
-|----------|------------------------------------------------------------------------|
-| Purpose | Extract structured table data preserving headers, rows, columns, merged cells. |
-| Rationale | pdfplumber handles most tables well. camelot (lattice/stream modes) can be used as a fallback for tables that pdfplumber misses. |
-| Domain-Oriented Metadata | The table extractor enriches raw tables with semantic metadata: table title, reporting scope, currency, unit, period labels. This is implemented as a post-processing step, not a parser feature. |
-
-### OCR (Conditional)
-
-| Decision | **Not implemented by default; Tesseract as fallback if scanned pages detected** |
-|----------|--------------------------------------------------------------------------------|
-| Purpose | Handle scanned PDF pages that contain no extractable text. |
-| Rationale | The starter PDFs are likely digital (text-native). OCR adds complexity and processing time. Include detection logic for scanned pages, but only invoke OCR when needed. |
-| Candidate | Tesseract (via pytesseract). |
-
-### Vision / Figure Interpretation (Conditional)
-
-| Decision | **Not implemented in prototype; documented as Next Step** |
-|----------|----------------------------------------------------------|
-| Purpose | Interpret charts, diagrams, infographics. |
-| Rationale | The prototype targets text and tables. If a chart is central to one of the four required demo cases, a minimal chart-extraction path can be added using the LLM's vision capabilities. Otherwise, figures are identified and preserved as evidence objects but not interpreted. |
+| Decision | sentence-transformers with BAAI/bge-small-en-v1.5 |
+|---|---|
+| Primary Model | `BAAI/bge-small-en-v1.5` (384 dimensions) |
+| Runtime | `sentence-transformers` library (CPU/GPU local inference) |
+| Separation of Concerns | Distinct separation between generative reasoning (Ollama + Qwen) and embedding generation (sentence-transformers + BGE). Decouples candidate matching from the Ollama daemon lifecycle. |
+| Scope of Use | Restricted to candidate generation and blocking (entity canonicalization, attribute matching, fact grouping). Embeddings are never used to make final epistemic decisions. |
+| Excluded Alternatives | `nomic-embed-text` via Ollama (unnecessary coupling to LLM runtime), `all-MiniLM-L6-v2` (lower retrieval precision on domain-specific financial terms than BGE-small). |
 
 ---
 
-## 6. Orchestration / Workflow Engine
+## 5. PDF Processing: Two-Tool Strategy
 
-| Decision | **LangGraph** |
-|----------|--------------|
-| Purpose | Orchestrate the multi-agent workflow with branching, parallel execution, state management, conditional routing, retries, structured outputs, and checkpoints. |
-| Rationale | The pipeline has a predictable but non-trivial flow: parallel extraction, conditional conflict detection, branching into reconciliation vs. contradiction paths, adversarial challenge, policy evaluation. LangGraph handles this as a deterministic graph rather than an autonomous agent loop. |
-| Why Not Raw Python | A hand-rolled orchestrator is feasible but would require reimplementing state management, retry logic, and conditional branching. LangGraph provides these out of the box. |
-| Why Not LangChain Agents | LangChain's autonomous agent mode (ReAct, etc.) would let the LLM decide the next step. The architecture explicitly requires a **deterministic workflow** -- agents are workers, not decision-makers about the pipeline itself. |
-| Why Not Prefect/Airflow | Those are task orchestrators for data pipelines, not reasoning workflows. They lack native support for LLM-specific patterns like structured output, prompt routing, and state-dependent branching. |
+Rather than treating PDF parsers as competing alternatives, the system adopts a deliberate two-tool division of responsibilities:
 
-### Workflow Structure
-
-```
-DocumentState
-    --> Parallel extraction (numerical, semantic, event)
-    --> Evidence verification
-    --> Context resolution
-    --> Fact normalization and grouping
-    --> Relationship detection
-    --> [NO CONFLICT] --> CORROBORATED
-    --> [CONFLICT] --> Hypothesis generation
-        --> Specialist validators (numerical, temporal, semantic)
-        --> Reconciliation agent
-        --> Adversarial challenge
-        --> Decision policy
-        --> Final decision
+```text
+                    PDF Document
+                         |
+             +-----------+-----------+
+             |                       |
+             v                       v
+          PyMuPDF                pdfplumber
+      (Primary Engine)       (Specialist Tables)
+             |                       |
+       Document loading       Table detection
+       Page iteration         Cell boundaries
+       Text blocks & bbox     Merged header handling
+       Page metadata          Table coordinate extraction
+             |                       |
+             +-----------+-----------+
+                         |
+                         v
+             Structured Evidence Objects
 ```
 
----
+### Component Breakdown
 
-## 7. API Framework
-
-| Decision | **FastAPI** |
-|----------|------------|
-| Purpose | REST API for PDF upload, job management, and result inspection. |
-| Rationale | Lightweight, async-native, automatic OpenAPI/Swagger documentation, Pydantic-based request/response validation. The auto-generated Swagger UI serves as the "simple UI" the assignment requests without building a frontend. |
-| Endpoints | `POST /jobs`, `GET /jobs/{id}`, `GET /documents/{id}`, `GET /facts`, `GET /decisions/{id}` |
-| Async Design | Processing is asynchronous. `POST /jobs` returns a job ID immediately; progress is polled via `GET /jobs/{id}`. This handles the potentially long Ollama inference time. |
-
----
-
-## 8. CLI
-
-| Decision | **Python click (or argparse)** |
-|----------|-------------------------------|
-| Purpose | Primary human debugging interface for the prototype. |
-| Rationale | The CLI is the fastest way for the evaluator to run the system. No browser, no API client needed. |
-| Usage | `python -m factlayer process ./documents/` |
-| Output | Terminal summary + structured artifact directory. |
+| Role | Library | Purpose |
+|---|---|---|
+| Primary Parser | **PyMuPDF (fitz)** | High-speed document loading, text extraction with bounding boxes, font metadata, page slicing, coordinate anchoring. |
+| Table Specialist | **pdfplumber** | Precise extraction of table cells, column lines, and multi-line headers into structured 2D matrices. |
+| Table Fallback | **Camelot (camelot-py)** | Invoked only when pdfplumber fails to parse complex bordered/unbordered tables (lattice/stream mode). |
+| OCR Fallback | **Tesseract (pytesseract)** | Conditional fallback triggered only when a page yields near-zero text layer (scanned/rasterized page). |
+| Vision Models | **Excluded from Prototype** | Figures and charts are recorded as `FIGURE`/`CHART` evidence metadata objects with bounding boxes, but visual reasoning is out of prototype scope. |
 
 ---
 
-## 9. Storage
+## 6. Orchestration and Workflow Engine: LangGraph
 
-### Primary Storage
+| Decision | LangGraph |
+|---|---|
+| Purpose | Deterministic multi-agent state orchestration with conditional branching, validation loops, parallel node execution, and checkpointing. |
+| Key Principle | **LangGraph controls the workflow; the LLM does not.** Agents are functional execution units, not autonomous planners. |
+| Why LangGraph | Out-of-the-box support for cyclic graphs, conditional routing (corroboration vs. contradiction vs. reconciliation), and typed state objects. |
+| Excluded Alternatives | LangChain autonomous agents / ReAct (non-deterministic routing violates explainability), Prefect / Airflow (designed for batch data engineering, lack fine-grained prompt/state graph semantics). |
 
-| Decision | **SQLite** |
-|----------|-----------|
-| Purpose | Structured storage for observations, facts, fact groups, decisions, and traces. |
-| Rationale | Zero-configuration, single-file database. Fully portable -- the evaluator can inspect the database with any SQLite client. No external database server to install. Supports the relational queries needed for fact grouping and relationship detection. |
-| Why Not PostgreSQL | Unnecessary infrastructure for a prototype. SQLite handles the expected data volume (3-10 PDFs, hundreds of facts) without issues. |
-| Why Not MongoDB/NoSQL | The data model is inherently relational (observations belong to documents, facts belong to groups, decisions reference hypotheses and validators). A relational model is natural. |
+### Graph Topology
 
-### Artifact Storage
-
-| Decision | **JSON / JSONL / Markdown files on disk** |
-|----------|------------------------------------------|
-| Purpose | Human-readable, inspectable output artifacts. |
-| Rationale | Every run produces a structured artifact directory. JSON for machine-readable data (evidence, facts, decisions, traces). Markdown for human-readable reports (summary, contradiction report, unresolved report). JSONL for streaming/append-friendly formats (observations, events). |
-| Structure | `runs/JOB-{id}/` with subdirectories for documents, observations, facts, decisions, reports, and traces. |
-
-### Why Not a Graph Database
-
-| Decision | **No graph database** |
-|----------|----------------------|
-| Rationale | The assignment explicitly states: "A graph database or visualization alone is not the solution." The Evidence Ledger (SQLite + JSON) is the system of record. A graph can exist as an optional **projection** (via NetworkX) but is never the decision mechanism. This distinction is a strength of the architecture. |
-
-### Why Not a Vector Database
-
-| Decision | **No dedicated vector database** |
-|----------|--------------------------------|
-| Rationale | Embeddings are used for candidate matching (blocking step), not as a core retrieval mechanism. For the prototype's data volume, in-memory cosine similarity over a small set of embedded attributes is sufficient. A persistent vector store (Chroma, FAISS, Pinecone) is unnecessary complexity. |
-| Scaling Path | If the system grows to thousands of documents, a local FAISS index or Chroma instance would be the natural upgrade. Documented as Next Steps. |
-
----
-
-## 10. Data Validation and Schema
-
-| Decision | **Pydantic** |
-|----------|-------------|
-| Purpose | Strict schema enforcement for all structured objects: observations, fact candidates, evidence bundles, hypotheses, validator outputs, decisions, traces. |
-| Rationale | Every agent produces structured output. Pydantic enforces the output contract at runtime. Malformed LLM outputs are caught immediately, triggering retry or failure rather than propagating bad data. |
-| Integration | FastAPI uses Pydantic natively for request/response models. LangGraph state objects use Pydantic. LLM structured output can be validated against Pydantic models. |
-
----
-
-## 11. Deterministic Validators (Pure Python)
-
-The following computations are explicitly **not** delegated to the LLM:
-
-| Validator | Implementation | Why Not LLM |
-|-----------|---------------|-------------|
-| **Unit normalization** | Python conversion tables (crore/lakh/million/billion, INR/USD) | Arithmetic must be exact. LLMs make unit conversion errors. |
-| **Currency conversion** | Python rules / lookup | Deterministic and auditable. |
-| **Numerical comparison** | Python: `abs(a - b)`, relative difference, materiality threshold | LLMs cannot reliably do arithmetic. |
-| **Date normalization** | Python datetime: FY parsing, quarter mapping, period overlap detection | Date logic is rule-based. |
-| **Arithmetic verification** | Python: verify extracted percentages against base values | Catches extraction errors the LLM would miss. |
-
-These validators produce structured outputs that feed into the Decision Policy, which is itself a deterministic Python function.
-
----
-
-## 12. Graph Visualization (Optional)
-
-| Decision | **NetworkX** (if time permits) |
-|----------|-------------------------------|
-| Purpose | Lightweight in-memory graph for optional visualization of document-evidence-fact-decision relationships. |
-| Rationale | Zero infrastructure. Can produce simple visualizations via matplotlib or export to formats readable by external tools. Not a decision mechanism -- purely a projection of the Evidence Ledger for inspection. |
-| Priority | Low. Decision cards, traces, and Markdown reports are more valuable than graph visualization. |
+```text
+                  Document Evidence State
+                            |
+           +----------------+----------------+
+           |                |                |
+           v                v                v
+       Numerical         Semantic          Event
+       Extractor         Extractor       Extractor
+           |                |                |
+           +----------------+----------------+
+                            |
+                            v
+                   Evidence Verifier
+                            |
+                            v
+                    Context Resolver
+                            |
+                            v
+                   Fact Grouping Node
+                            |
+            +---------------+---------------+
+            |                               |
+     [Direct Match]                 [Value Variance]
+            |                               |
+            v                               v
+       CORROBORATED               Hypothesis Generator
+                                            |
+                               +------------+------------+
+                               |            |            |
+                               v            v            v
+                           Numerical     Temporal     Semantic
+                           Validator    Validator    Validator
+                               |            |            |
+                               +------------+------------+
+                                            |
+                                            v
+                                   Reconciliation Agent
+                                            |
+                                            v
+                                   Adversarial Challenge
+                                            |
+                                            v
+                                      Decision Policy
+                                            |
+                                            v
+                                      Final Decision
+```
 
 ---
 
-## 13. Testing
+## 7. API Framework: FastAPI
 
-| Decision | **pytest** |
-|----------|-----------|
-| Purpose | Unit tests for deterministic validators, integration tests for agent contracts, end-to-end pipeline tests. |
-| Rationale | Standard Python testing framework. The architecture is designed for testability: stateless agents with defined input/output contracts, deterministic validators with known expected outputs, decision policies with explicit rule sets. |
-| Key Test Targets | Unit normalization, numerical comparison, date parsing, decision policy logic, evidence verification contract, structured output validation. |
+| Decision | FastAPI + Uvicorn |
+|---|---|
+| Purpose | REST API for asynchronous job management, PDF upload, and result inspection. |
+| Features Used | Typed endpoints via Pydantic, automatic OpenAPI documentation, interactive Swagger UI (`/docs`). |
+| Interactive UI | Swagger UI serves as the zero-code inspection interface, satisfying UI review requirements without frontend overhead. |
+| Async Pattern | Long-running extraction jobs return `202 Accepted` with a `job_id`. Status is polled via `GET /jobs/{job_id}`. |
+| Testing Utility | `httpx` is used as the test client for API endpoint integration tests. |
+
+---
+
+## 8. CLI Interface: argparse
+
+| Decision | Python Standard Library argparse |
+|---|---|
+| Purpose | Primary local debugging and evaluation command-line interface. |
+| Invocation | `python -m factlayer process ./documents/` |
+| Rationale | Zero third-party dependencies, standard library stability, straightforward evaluator execution without dependency conflicts. |
+| Excluded Alternatives | Click was excluded to avoid unnecessary external dependencies for a single command entry point. |
+
+---
+
+## 9. Storage and Artifact Architecture
+
+### Relational Store: SQLite
+
+| Decision | SQLite (sqlite3 standard library) |
+|---|---|
+| Role | System of record for documents, evidence chunks, extracted facts, fact groups, validator results, hypotheses, decisions, and audit traces. |
+| Schema Design | Normalized relational schema matching the epistemic hierarchy: `documents` -> `evidence_chunks` -> `observations` -> `fact_candidates` -> `fact_groups` -> `hypotheses` -> `decisions`. |
+| Implementation | Direct Python `sqlite3` without ORM abstraction (no SQLAlchemy) to maintain zero overhead, inspectability, and simple migration management. |
+
+### Inspectable Artifacts: JSON + JSONL + Markdown
+
+The system stores human- and machine-readable artifacts under `runs/JOB-{id}/`:
+
+| Format | Role | Examples |
+|---|---|---|
+| **SQLite** | Queryable relational state | `ledger.db` |
+| **JSON** | Machine-readable structured objects | `facts.json`, `decisions.json`, `evidence_index.json` |
+| **JSONL** | Append-only event streams and audit trails | `agent_trace.jsonl`, `extraction_events.jsonl` |
+| **Markdown** | Human-readable executive reports | `executive_summary.md`, `contradictions_report.md` |
+
+### Excluded Storage Paradigms
+
+| Paradigm | Status | Rational Rationale |
+|---|---|---|
+| Dedicated Vector DB (Chroma/FAISS) | Excluded | Candidate matching volume (hundreds of facts) runs efficiently in memory via NumPy/cosine similarity. |
+| Graph Database (Neo4j/ArangoDB) | Excluded | The assignment notes a graph is not the decision mechanism. NetworkX provides an optional projection. |
+| Document Store (MongoDB) | Excluded | Data model is intrinsically relational with strong relational integrity requirements. |
+
+---
+
+## 10. Data Validation and Contracts: Pydantic v2
+
+| Decision | Pydantic v2 |
+|---|---|
+| Purpose | Strict boundary enforcement for all inter-agent messages, LLM outputs, state payloads, and API requests. |
+| Failure Recovery | LLM responses that fail schema validation trigger a single targeted retry with schema hints. Continued failure defaults safely to an extraction failure or `UNRESOLVED` fact status. |
+| Core Schemas | `EvidenceChunk`, `Observation`, `FactCandidate`, `FactGroup`, `Hypothesis`, `ValidatorReport`, `DecisionRecord`, `TraceEvent`. |
+
+---
+
+## 11. Deterministic Processing and Exact Arithmetic
+
+Computations requiring exact logic are strictly forbidden from being executed by the LLM:
+
+| Task | Implementation | Epistemic Rule |
+|---|---|---|
+| **Financial Arithmetic** | Python `Decimal` | Exact decimal precision for currency and percentages. Floating-point types are avoided for money calculations. |
+| **Unit Normalization** | Python deterministic lookup tables | Normalizes scale within same currency (crore, lakh, thousand, million, billion). |
+| **Currency Conversion** | Conditional conversion only | Automatic cross-currency conversion is prohibited unless the source text explicitly provides an exchange rate and reference date. Without explicit context, cross-currency variations yield `CURRENCY_MISMATCH` -> `UNRESOLVED`. |
+| **Temporal Logic** | `python-dateutil` + `datetime` | Normalizes fiscal years (FY23, FY2022-23), quarters (Q1, Q4), trailing twelve months (TTM), and overlap intervals. |
+| **Policy Decision Engine** | Pure Python deterministic function | Maps validator outputs and challenge results to final verdicts (`CORROBORATED`, `CONTRADICTION`, `RECONCILED`, `UNRESOLVED`). |
+
+---
+
+## 12. Graph Projection: NetworkX (Optional)
+
+| Decision | NetworkX (Projection Only) |
+|---|---|
+| Role | In-memory graph projection of the Evidence Ledger for topological inspection and visualization. |
+| Constraint | Strictly downstream of the Decision Engine. NetworkX never participates in fact verification, contradiction detection, or decision logic. |
+| Priority | Optional secondary utility. |
+
+---
+
+## 13. Testing Framework: pytest
+
+| Decision | pytest |
+|---|---|
+| Purpose | Comprehensive automated verification of unit math, agent contracts, and epistemic evaluation benchmarks. |
+
+### Test Suite Structure
+
+```text
+tests/
+|-- unit/
+|   |-- test_decimal_units.py       # Crore, lakh, million, billion scaling
+|   |-- test_temporal_parsing.py    # Fiscal calendars and period overlaps
+|   +-- test_decision_policy.py     # Deterministic policy rules
+|-- contracts/
+|   |-- test_extractor_schema.py    # Pydantic schema validation on LLM output
+|   |-- test_verifier_schema.py     # Evidence grounding schema validation
+|   +-- test_reconciler_schema.py   # Reconciliation hypothesis schema
++-- evaluation/
+    |-- test_corroboration.py       # Identical facts across documents
+    |-- test_contradiction.py       # Direct numerical/temporal conflicts
+    |-- test_reconciliation.py      # Scope/definition reconciled variance
+    +-- test_failure_handling.py    # Degraded/malformed input resilience
+```
 
 ---
 
 ## 14. Technology-to-Architecture Mapping
 
-| Architecture Layer | Technologies Used |
-|-------------------|-------------------|
-| **Layer 1: Document Evidence Preparation** | pdfplumber, PyMuPDF, (Tesseract if OCR needed), Python text processing |
-| **Layer 2: Fact Construction** | Ollama (extraction, verification, context), Pydantic (schemas), embedding model (matching), Python (normalization) |
-| **Layer 3: Fact Decision Engine** | LangGraph (orchestration), Ollama (reconciliation, challenge, hypothesis), Python (numerical/temporal/decision policy validators) |
-| **Layer 4: Observability** | FastAPI (API), click (CLI), SQLite (storage), JSON/JSONL/Markdown (artifacts) |
-| **Cross-cutting** | Pydantic (validation), pytest (testing), NetworkX (optional graph) |
+```text
+                         FACT KNOWLEDGE LAYER
+                                  |
+                +-----------------+-----------------+
+                |                                   |
+         DOCUMENT PROCESSING                    REASONING
+                |                                   |
+          +-----+-----+                       +-----+------+
+          |           |                       |            |
+       PyMuPDF    pdfplumber                Ollama      BGE-small
+       (Engine)    (Tables)                (Qwen2.5)   (Embeddings)
+          |           |                       |            |
+          |        Camelot                    |            |
+          |       (Fallback)                  |            |
+          +-----+-----+                       |            |
+                |                             |            |
+                v                             |            |
+         Evidence Objects                     |            |
+                |                             |            |
+                +-------------+---------------+------------+
+                              |
+                              v
+                         Pydantic v2
+                              |
+                              v
+                          LangGraph
+                              |
+        +---------------------+---------------------+
+        |                     |                     |
+   Extraction            Verification            Context
+     Agents                 Agent               Resolver
+        +---------------------+---------------------+
+                              |
+                              v
+                         Fact Groups
+                              |
+                     Hypothesis Generator
+                              |
+                   +----------+----------+
+                   |          |          |
+                   v          v          v
+               Numerical   Temporal   Semantic
+               Validator  Validator  Validator
+               (Decimal)  (dateutil)  (Rules)
+                   +----------+----------+
+                              |
+                              v
+                     Reconciliation Agent
+                              |
+                              v
+                    Adversarial Challenge
+                              |
+                              v
+                    Decision Policy (Pure Python)
+                              |
+                              v
+                        Final Decision
+                              |
+                     +--------+--------+
+                     |                 |
+                     v                 v
+                  SQLite         JSON / JSONL / MD
+                     |
+                     v
+               FastAPI + CLI (argparse)
+```
 
 ---
 
 ## 15. What is Deliberately NOT in the Stack
 
-| Technology | Reason for Exclusion |
-|-----------|---------------------|
-| React / Vue / Angular | No frontend needed. Swagger UI is sufficient. |
-| Neo4j / ArangoDB | Graph is not the decision mechanism. |
-| Kafka / RabbitMQ | No event streaming needed for a prototype. |
-| Redis | No caching layer needed at this scale. |
-| Docker / Kubernetes | Prototype runs locally. Containerization is a deployment concern, not a prototype concern. |
-| Elasticsearch | No full-text search needed beyond what SQLite and embeddings provide. |
-| Chroma / Pinecone / FAISS | Unnecessary for the prototype's data volume. Upgrade path documented. |
-| OpenAI / Anthropic APIs | Avoids credential management, cost, and external dependency. |
-| Celery / distributed task queues | LangGraph handles workflow orchestration. No need for distributed job processing. |
+| Component | Status | Rational Rationale |
+|---|---|---|
+| Frontend (React/Vue) | Excluded | FastAPI Swagger UI + CLI provide complete verification access. |
+| Graph Database (Neo4j) | Excluded | Graph is a visual projection, not an epistemic decision engine. |
+| Vector Database (Pinecone/Chroma) | Excluded | Prototype volume runs reliably in memory without database overhead. |
+| Paid Cloud APIs (OpenAI/Anthropic) | Excluded | Zero external dependency, no API keys, fully local and cost-free. |
+| Database ORM (SQLAlchemy) | Excluded | Plain sqlite3 queries are direct, transparent, and easier to audit. |
+| CLI Framework (Click/Typer) | Excluded | Standard library argparse is self-contained and sufficient. |
+| Task Queues (Celery/RabbitMQ) | Excluded | LangGraph state transitions handle prototype pipeline workflow. |
+| Serialization Engine (orjson) | Excluded | Standard library json and Pydantic serialization suffice. |
+| Containerization (Docker) | Excluded Initially | Native Python virtual environment eliminates deployment friction. |
 
 ---
 
-## 16. Dependency Summary
+## 16. Dependency Specification
 
-### Core Dependencies
+### requirements.txt
 
-```
+```text
 # LLM and Orchestration
-ollama                  # Local LLM runtime (system-level install)
-langchain-ollama        # Ollama integration for LangGraph
-langgraph               # Workflow orchestration
-langchain-core          # Base abstractions
+ollama>=0.4.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
 
-# PDF Processing
-pdfplumber              # Text and table extraction
-PyMuPDF                 # Fast text extraction, fallback
+# Document and PDF Processing
+PyMuPDF>=1.24.0
+pdfplumber>=0.11.0
 
-# API and CLI
-fastapi                 # REST API
-uvicorn                 # ASGI server
-click                   # CLI framework
+# Table Extraction Fallback
+camelot-py[cv]>=0.11.0
 
-# Data and Validation
-pydantic                # Schema validation
-sqlite3                 # Built-in, no install needed
+# OCR Fallback (Conditional)
+pytesseract>=0.3.10
+Pillow>=10.0.0
 
 # Embeddings
-sentence-transformers   # Local embedding models
-  OR
-ollama embeddings       # Via Ollama's embedding endpoint
+sentence-transformers>=3.0.0
 
-# Utilities
-python-dateutil         # Date parsing
+# API and Server
+fastapi>=0.115.0
+uvicorn>=0.30.0
+httpx>=0.27.0
+
+# Validation and Data Contracts
+pydantic>=2.8.0
+
+# Temporal Utilities
+python-dateutil>=2.9.0
+
+# Graph Projection (Optional)
+networkx>=3.2.0
+
+# Testing Suite
+pytest>=8.0.0
 ```
 
-### Optional Dependencies
+### Standard Library Capabilities (No External Install Required)
 
-```
-# Table extraction fallback
-camelot-py              # Alternative table extraction
-
-# OCR (only if scanned pages detected)
-pytesseract             # Tesseract OCR wrapper
-Pillow                  # Image processing for OCR
-
-# Visualization
-networkx                # Graph projection
-matplotlib              # Graph rendering
-
-# Testing
-pytest                  # Test framework
-```
+- `sqlite3`: Relational database engine
+- `argparse`: Command-line interface parser
+- `decimal`: Exact financial arithmetic
+- `datetime`: Standard timestamp handling
+- `pathlib`: Filesystem path manipulation
+- `json`: Machine-readable artifact serialization
+- `hashlib`: Evidence chunk hashing and provenance tracking
 
 ---
 
-## 17. Key Engineering Decisions Summary
+## 17. Frozen Decisions Matrix
 
-| Decision | Choice | Principle |
-|----------|--------|-----------|
-| LLM location | Local (Ollama) | Reproducibility, cost control, no credentials |
-| LLM role | Semantic reasoning only | Deterministic code handles arithmetic, dates, rules |
-| Agent autonomy | None -- orchestrator-controlled | Reproducibility, debuggability |
-| Storage | SQLite + files | Simplicity, portability, inspectability |
-| Graph database | Not used | Graph is projection, not intelligence |
-| Vector database | Not used | Blocking step uses in-memory similarity |
-| Frontend | Not built | Swagger + CLI + Markdown reports |
-| Schema enforcement | Pydantic everywhere | Catch LLM output errors at boundary |
-| Model coupling | Abstracted behind ReasoningService | Model-agnostic, future-proof |
-| Workflow engine | LangGraph | Deterministic graph, not autonomous agents |
+| Area | Final Frozen Choice | Concrete Rationale |
+|---|---|---|
+| Language | Python 3.11 | Maximum reproducibility across evaluators. |
+| LLM Runtime | Ollama | Local, cost-free, zero-credential execution. |
+| Primary Model | Qwen2.5 7B Instruct | Superior structured output, table extraction, and JSON compliance. |
+| Model Upgrade Path | Qwen2.5 14B Instruct | Drop-in parameter scale for machines with higher VRAM. |
+| Embeddings Library | sentence-transformers | Clean separation between reasoning model and candidate matcher. |
+| Embedding Model | BAAI/bge-small-en-v1.5 | Lightweight, highly performant local candidate blocking model. |
+| Primary PDF Parser | PyMuPDF (fitz) | Fast, robust page geometry, text blocks, bounding boxes, metadata. |
+| Table Extraction | pdfplumber | Explicit table cell, row, and merged header boundary extraction. |
+| Table Fallback | Camelot | Fallback specialist when pdfplumber encounters complex lattices. |
+| OCR Engine | Tesseract (pytesseract) | Conditional fallback triggered only on zero-text scanned pages. |
+| Vision Reasoning | Excluded from Prototype | Figures recorded as evidence metadata; no visual LLM inference. |
+| Workflow Engine | LangGraph | Deterministic conditional agent graphs; LLM does not route workflow. |
+| API Layer | FastAPI + Swagger UI | Typed REST endpoints with built-in interactive review interface. |
+| CLI Tooling | argparse | Standard library zero-dependency execution. |
+| Relational Storage | SQLite (sqlite3) | Relational system of record, single file, zero installation. |
+| Database ORM | None (Direct sqlite3) | Direct SQL queries ensure maximum transparency and zero bloat. |
+| Artifact Storage | JSON + JSONL + Markdown | Machine-actionable state paired with human-readable reports. |
+| Schema Validation | Pydantic v2 | Strict validation boundaries and retry mechanisms for LLM outputs. |
+| Financial Math | Python Decimal | Exact decimal arithmetic avoiding binary floating-point roundoff. |
+| Currency Handling | Source-explicit only | Unit conversion permitted; cross-currency conversion requires explicit context. |
+| Vector Database | None (In-memory) | In-memory similarity over candidate vectors; no external vector DB. |
+| Graph Database | None (NetworkX optional) | Graph used solely as optional projection; never a decision engine. |
+| Testing | pytest | Strict unit, schema contract, and four-outcome evaluation tests. |
 
 ---
 
