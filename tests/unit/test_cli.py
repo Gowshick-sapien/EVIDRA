@@ -5,8 +5,11 @@ import tempfile
 from pathlib import Path
 import pytest
 
+# pyrefly: ignore [missing-import]
 from src.cli.main import build_parser, main
+# pyrefly: ignore [missing-import]
 from src.db.ledger import DecisionRecord, EvidenceLedger
+# pyrefly: ignore [missing-import]
 from src.observability.trace import RunContext
 
 

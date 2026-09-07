@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 import pytest
 
+# pyrefly: ignore [missing-import]
 from src.observability.trace import RunContext, TraceLogger
 
 

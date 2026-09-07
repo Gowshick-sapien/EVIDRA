@@ -10,11 +10,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import PlainTextResponse
 
+# pyrefly: ignore [missing-import]
 from src.api.models import (
     DecisionDetailResponse,
     DecisionItemResponse,
@@ -23,7 +24,12 @@ from src.api.models import (
     JobCreateResponse,
     JobStatusResponse,
 )
-from src.db.ledger import EvidenceLedger
+import hashlib
+# pyrefly: ignore [missing-import]
+from src.db.ledger import DocumentRecord, EvidenceLedger
+# pyrefly: ignore [missing-import]
+from src.extraction.pipeline import ExtractionPipeline
+# pyrefly: ignore [missing-import]
 from src.observability.trace import RunContext, TraceLogger
 
 
@@ -94,8 +100,40 @@ def create_app(runs_root: Path | str = "runs") -> FastAPI:
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
+    def _run_background_pipeline(job_id: str, file_paths: list[Path]):
+        try:
+            ctx = RunContext(runs_root=runs_path, job_id=job_id)
+            ledger = EvidenceLedger(ctx.db_path)
+            tracer = TraceLogger(ctx.trace_log_path)
+            pipeline = ExtractionPipeline(ledger=ledger, tracer=tracer, max_llm_chunks=10)
+
+            for idx, path in enumerate(file_paths, start=1):
+                doc_id = f"DOC-{idx:03d}"
+                with open(path, "rb") as f:
+                    file_hash = hashlib.sha256(f.read()).hexdigest()
+                doc_record = DocumentRecord(
+                    document_id=doc_id,
+                    filename=path.name,
+                    file_hash=file_hash,
+                    page_count=1,
+                )
+                try:
+                    ledger.insert_document(doc_record)
+                except Exception:
+                    pass
+                pipeline.process_document(doc_id, path)
+
+            summary = ledger.get_job_summary()
+            ctx.complete_run(summary=summary)
+        except Exception as e:
+            ctx = RunContext(runs_root=runs_path, job_id=job_id)
+            ctx.fail_run(str(e))
+
     @app.post("/jobs", response_model=JobCreateResponse, status_code=status.HTTP_202_ACCEPTED, tags=["Jobs"])
-    async def create_job(files: list[UploadFile] = File(..., description="PDF documents to upload")) -> JobCreateResponse:
+    async def create_job(
+        background_tasks: BackgroundTasks,
+        files: list[UploadFile] = File(..., description="PDF documents to upload")
+    ) -> JobCreateResponse:
         """Upload one or more PDF files and initialize an asynchronous processing job."""
         if not files:
             raise HTTPException(status_code=400, detail="No files uploaded.")
@@ -136,6 +174,10 @@ def create_app(runs_root: Path | str = "runs") -> FastAPI:
 
         # Initialize the ledger for this run
         _ = EvidenceLedger(ctx.db_path)
+
+        # Enqueue asynchronous extraction pipeline in background
+        saved_paths = [ctx.documents_dir / fn for fn in saved_filenames]
+        background_tasks.add_task(_run_background_pipeline, ctx.job_id, saved_paths)
 
         return JobCreateResponse(
             job_id=ctx.job_id,

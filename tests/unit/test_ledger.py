@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 import pytest
 
+# pyrefly: ignore [missing-import]
 from src.db.ledger import (
     DocumentRecord,
     EvidenceChunkRecord,

@@ -1,0 +1,1 @@
+{"trace_id": "TRC-2b7b0c12", "decision_id": null, "timestamp": "2026-09-07T18:55:27.998551+00:00", "step_name": "document_ingestion", "agent_name": "cli_pipeline", "latency_ms": 0.0, "input": {"pdf_files": ["01-delhivery-prospectus-2022-excerpt.pdf"]}, "output": {"documents_ingested": 1}}

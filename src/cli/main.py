@@ -11,8 +11,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# pyrefly: ignore [missing-import]
 from src.db.ledger import DocumentRecord, EvidenceLedger
+# pyrefly: ignore [missing-import]
 from src.observability.trace import RunContext, TraceLogger
+# pyrefly: ignore [missing-import]
+from src.extraction.pipeline import ExtractionPipeline
 
 
 def compute_file_hash(filepath: Path) -> str:
@@ -71,9 +75,21 @@ def handle_process(args: argparse.Namespace) -> int:
             document_id=doc_id,
             filename=pdf_path.name,
             file_hash=file_hash,
-            page_count=1,  # Base page count, updated by parser in D2
+            page_count=1,
         )
         ledger.insert_document(doc_record)
+
+        # Execute D2 Extraction Pipeline
+        max_chunks = None if getattr(args, "all_chunks", False) else getattr(args, "max_chunks", 15)
+        if getattr(args, "skip_llm", False):
+            max_chunks = 0
+
+        pipeline = ExtractionPipeline(
+            ledger=ledger,
+            tracer=tracer,
+            max_llm_chunks=max_chunks,
+        )
+        pipeline.process_document(doc_id, dest_path)
 
     summary = ledger.get_job_summary()
     ctx.complete_run(summary=summary)
@@ -86,6 +102,7 @@ def handle_process(args: argparse.Namespace) -> int:
     print(f"  Run Directory:     {ctx.run_dir}")
     print(f"  Documents Ingested:{len(pdf_files)}")
     print(f"  Evidence Chunks:   {summary['evidence_chunks_count']}")
+    print(f"  Observations:      {summary['observations_count']}")
     print(f"  Fact Candidates:   {summary['fact_candidates_count']}")
     print(f"  Decisions Made:    {summary['decisions_count']}")
     print("-" * 60)
@@ -193,6 +210,9 @@ def build_parser() -> argparse.ArgumentParser:
     proc_parser = subparsers.add_parser("process", help="Process a PDF file or directory of PDFs")
     proc_parser.add_argument("path", help="Path to PDF file or directory containing PDFs")
     proc_parser.add_argument("--out-dir", default="runs", help="Base directory for job runs (default: runs)")
+    proc_parser.add_argument("--max-chunks", type=int, default=15, help="Max candidate chunks for LLM extraction (default: 15)")
+    proc_parser.add_argument("--all-chunks", action="store_true", help="Extract all candidate chunks without limit")
+    proc_parser.add_argument("--skip-llm", action="store_true", help="Extract layout chunks and tables only, skipping LLM")
     proc_parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     # inspect subcommand

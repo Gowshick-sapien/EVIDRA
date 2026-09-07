@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+# pyrefly: ignore [missing-import]
 from src.api.server import create_app
+# pyrefly: ignore [missing-import]
 from src.db.ledger import (
     DocumentRecord,
     EvidenceChunkRecord,
@@ -51,7 +53,7 @@ def test_create_job_and_poll_status(client_and_root):
     assert status_resp.status_code == 200
     status_data = status_resp.json()
     assert status_data["job_id"] == job_id
-    assert status_data["status"] in ("PENDING", "PROCESSING")
+    assert status_data["status"] in ("PENDING", "PROCESSING", "COMPLETED")
     assert status_data["input_files"] == ["test_filing.pdf"]
 
 
