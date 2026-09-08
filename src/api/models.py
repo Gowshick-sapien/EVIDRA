@@ -62,3 +62,21 @@ class DecisionDetailResponse(BaseModel):
     claims: list[dict[str, Any]] = Field(default_factory=list)
     hypotheses: list[dict[str, Any]] = Field(default_factory=list)
     traces: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TraceItemResponse(BaseModel):
+    trace_id: str
+    decision_id: Optional[str] = None
+    timestamp: str
+    step_name: str
+    agent_name: str
+    latency_ms: float
+    input: dict[str, Any] = Field(default_factory=dict)
+    output: dict[str, Any] = Field(default_factory=dict)
+
+
+class TraceListResponse(BaseModel):
+    job_id: str
+    decision_id: Optional[str] = None
+    count: int
+    traces: list[TraceItemResponse]

@@ -1,0 +1,333 @@
+{
+  "job_id": "JOB-20260908-034754-34f962",
+  "created_at": "2026-09-08T03:47:54.120243+00:00",
+  "completed_at": "2026-09-08T04:30:13.259152+00:00",
+  "status": "COMPLETED",
+  "documents": [
+    {
+      "document_id": "DOC-001",
+      "filename": "01-delhivery-prospectus-2022-excerpt.pdf",
+      "file_hash": "0d7e71e1766ef33063e52a2140936fbe400c2950e58e93489d031be0b19d8ce7",
+      "page_count": 100,
+      "created_at": "2026-09-08 03:47:54"
+    },
+    {
+      "document_id": "DOC-002",
+      "filename": "02-delhivery-annual-report-fy24-excerpt.pdf",
+      "file_hash": "de6d79adc0667d66f5415fa4fcec4b485a19073744adce44dfca3e34e529fa7a",
+      "page_count": 100,
+      "created_at": "2026-09-08 03:49:38"
+    },
+    {
+      "document_id": "DOC-003",
+      "filename": "03-delhivery-q4-fy24-earnings-presentation.pdf",
+      "file_hash": "5ca307085c96c1fcbfd2d99a7ad40dcbd8958079b3833063520e4e84fdded2a8",
+      "page_count": 27,
+      "created_at": "2026-09-08 03:51:09"
+    }
+  ],
+  "summary": {
+    "documents_count": 3,
+    "evidence_chunks_count": 6553,
+    "observations_count": 33,
+    "fact_candidates_count": 33,
+    "fact_groups_count": 24,
+    "decisions_count": 24,
+    "verdicts": {
+      "CORROBORATED": 0,
+      "CONTRADICTION": 3,
+      "RECONCILED": 1,
+      "UNRESOLVED": 20
+    }
+  },
+  "decisions": [
+    {
+      "decision_id": "DEC-95679d50",
+      "group_id": "GRP-73820abc",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Profit/(Loss) before tax",
+      "attribute": "Interest Expense",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-23d82ff9",
+      "group_id": "GRP-8ad9ea59",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Total income",
+      "attribute": "Revenue from operations",
+      "period_id": "2023-01-01_2023-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-e14dd9d3",
+      "group_id": "GRP-ae7ccb64",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Total income",
+      "attribute": "Non-operating income",
+      "period_id": "2023-01-01_2023-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-30c43c58",
+      "group_id": "GRP-aad61d37",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Total income",
+      "attribute": "Revenue from operations",
+      "period_id": "2023-10-01_2023-12-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-9a577250",
+      "group_id": "GRP-cd4d5a6b",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Revenue from Services",
+      "attribute": "FY24",
+      "period_id": "2023-04-01_2024-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-267f9e62",
+      "group_id": "GRP-0c0a9fd1",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "EBITDA Margin",
+      "attribute": "FY24",
+      "period_id": "2023-04-01_2024-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-590f544f",
+      "group_id": "GRP-20cafcd3",
+      "verdict": "CONTRADICTION",
+      "decision_strength": "HIGH",
+      "reasoning_summary": "Material numerical variance under identical reporting context where all reconciliation hypotheses were refuted.",
+      "entity": "Revenue from Services",
+      "attribute": "FY23",
+      "period_id": "2022-04-01_2023-03-31",
+      "member_count": 2,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-fc893513",
+      "group_id": "GRP-101522c6",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Revenue from Services",
+      "attribute": "YoY",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:07"
+    },
+    {
+      "decision_id": "DEC-dc0b19f5",
+      "group_id": "GRP-a833b914",
+      "verdict": "CONTRADICTION",
+      "decision_strength": "HIGH",
+      "reasoning_summary": "Material numerical variance under identical reporting context where all reconciliation hypotheses were refuted.",
+      "entity": "Restated",
+      "attribute": "Total",
+      "period_id": "2021-04-01_2021-12-31",
+      "member_count": 6,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-76357505",
+      "group_id": "GRP-ea5b2601",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Reporting Entity",
+      "attribute": "",
+      "period_id": "2021-08-24_2021-08-24",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-a9caf230",
+      "group_id": "GRP-6d9c9fae",
+      "verdict": "CONTRADICTION",
+      "decision_strength": "HIGH",
+      "reasoning_summary": "Material numerical variance under identical reporting context where all reconciliation hypotheses were refuted.",
+      "entity": "Reporting Entity",
+      "attribute": "",
+      "period_id": "2021-04-01_2021-04-01",
+      "member_count": 2,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-da83cec1",
+      "group_id": "GRP-51f85aaf",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Adjustment for Spoton Logistics Private Limited Interim Consolidated Profit and Loss for period August 24, 2021 to December 31, 2021",
+      "attribute": "Total Adjustment s",
+      "period_id": "2021-04-01_2021-12-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-b48adb87",
+      "group_id": "GRP-600d902c",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Intragroup elimination for period April 1, 2021 to August 23, 2021",
+      "attribute": "Total Adjustment s",
+      "period_id": "2021-04-01_2021-12-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-9b720ca8",
+      "group_id": "GRP-5cc9eddc",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Acquisiti on Adjustm ents for period April 1, 2021 to August 23, 2021",
+      "attribute": "Total Adjustment s",
+      "period_id": "2021-04-01_2021-12-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-96dc3fb6",
+      "group_id": "GRP-213e2bb2",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "EBITDA",
+      "attribute": "Change in EBITDA",
+      "period_id": "2023-04-01_2024-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-944b68dc",
+      "group_id": "GRP-4b2b359a",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "EBITDA",
+      "attribute": "Value at end of period",
+      "period_id": "2023-04-01_2024-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-55c5ae36",
+      "group_id": "GRP-9ad1f6fc",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "EBITDA",
+      "attribute": "FY24",
+      "period_id": "2023-04-01_2024-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-f785f3a4",
+      "group_id": "GRP-fe502d84",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "PAT (Profit/Loss)",
+      "attribute": "Value at end of period",
+      "period_id": "2023-10-01_2023-12-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-ec917004",
+      "group_id": "GRP-f8a33092",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "EBITDA",
+      "attribute": "Change over time",
+      "period_id": "2022-04-01_2023-03-31",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-0af0d480",
+      "group_id": "GRP-7828f572",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Management Commentary",
+      "attribute": "Factors contributing to EBITDA improvement",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-57c1248a",
+      "group_id": "GRP-9b8dc155",
+      "verdict": "RECONCILED",
+      "decision_strength": "HIGH",
+      "reasoning_summary": "Reconciled: Reporting basis difference between NON_GAAP and UNKNOWN.",
+      "entity": "Total income",
+      "attribute": "Revenue from Operations",
+      "period_id": "Undated",
+      "member_count": 3,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-32204a45",
+      "group_id": "GRP-c866f570",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Total income",
+      "attribute": "Non-operating income",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-a0813043",
+      "group_id": "GRP-d83fc3f0",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Profit/(Loss) before tax",
+      "attribute": "EBITDA",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    },
+    {
+      "decision_id": "DEC-5ca9b6a6",
+      "group_id": "GRP-2a44b3de",
+      "verdict": "UNRESOLVED",
+      "decision_strength": "LOW",
+      "reasoning_summary": "Single fact candidate observed; awaiting independent second source for corroboration.",
+      "entity": "Profit/(Loss) before tax",
+      "attribute": "Net Profit/Loss",
+      "period_id": "Undated",
+      "member_count": 1,
+      "created_at": "2026-09-08 03:53:06"
+    }
+  ]
+}

@@ -130,3 +130,113 @@ class TraceLogger:
         with open(self.trace_file_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
         return trace_id
+
+
+class TraceReplayer:
+    """Reads and replays chronological audit traces from trace.jsonl or SQLite ledger."""
+
+    def __init__(self, trace_path: Optional[Path | str] = None, db_path: Optional[Path | str] = None):
+        self.trace_path = Path(trace_path) if trace_path else None
+        self.db_path = Path(db_path) if db_path else None
+        self.steps: list[dict[str, Any]] = []
+
+    def load_steps(self, decision_id: Optional[str] = None) -> list[dict[str, Any]]:
+        """Load and filter trace steps from trace.jsonl file or SQLite database."""
+        steps: list[dict[str, Any]] = []
+
+        if self.trace_path and self.trace_path.exists():
+            with open(self.trace_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if decision_id and entry.get("decision_id") != decision_id:
+                            continue
+                        steps.append(entry)
+                    except json.JSONDecodeError:
+                        continue
+            self.steps = steps
+            if steps or not self.db_path:
+                return self.steps
+
+        if self.db_path and self.db_path.exists():
+            import sqlite3
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            query = "SELECT trace_id, decision_id, step_name, agent_name, input_json, output_json, execution_time_ms, created_at FROM decision_traces"
+            params: list[Any] = []
+            if decision_id:
+                query += " WHERE decision_id = ?"
+                params.append(decision_id)
+            query += " ORDER BY created_at ASC"
+            rows = conn.execute(query, params).fetchall()
+            for r in rows:
+                try:
+                    inp = json.loads(r["input_json"]) if r["input_json"] else {}
+                except Exception:
+                    inp = {"raw": r["input_json"]}
+                try:
+                    out = json.loads(r["output_json"]) if r["output_json"] else {}
+                except Exception:
+                    out = {"raw": r["output_json"]}
+                steps.append({
+                    "trace_id": r["trace_id"],
+                    "decision_id": r["decision_id"],
+                    "timestamp": r["created_at"],
+                    "step_name": r["step_name"],
+                    "agent_name": r["agent_name"],
+                    "latency_ms": r["execution_time_ms"],
+                    "input": inp,
+                    "output": out,
+                })
+            conn.close()
+            self.steps = steps
+            return self.steps
+
+        return []
+
+    def render_timeline(self, decision_id: Optional[str] = None) -> str:
+        """Render a formatted chronological timeline of reasoning steps."""
+        steps = self.load_steps(decision_id=decision_id)
+        if not steps:
+            target = f" for decision '{decision_id}'" if decision_id else ""
+            return f"No audit trace steps found{target}."
+
+        filter_note = f" (Decision: {decision_id})" if decision_id else ""
+        lines = [
+            "=" * 80,
+            f"  EVIDRA Cryptographic Audit Replay{filter_note}",
+            "=" * 80,
+        ]
+
+        for idx, s in enumerate(steps, start=1):
+            dec_part = f" | Decision: {s.get('decision_id')}" if s.get("decision_id") else ""
+            lat_part = f" | Latency: {s.get('latency_ms', 0):.2f}ms"
+            lines.append(f"[{idx:02d}] Step: {s.get('step_name')} | Agent: {s.get('agent_name')}{dec_part}{lat_part}")
+            lines.append(f"     Timestamp: {s.get('timestamp')}")
+            if s.get("input"):
+                inp_summary = json.dumps(s["input"], ensure_ascii=False)
+                if len(inp_summary) > 120:
+                    inp_summary = inp_summary[:117] + "..."
+                lines.append(f"     Input:     {inp_summary}")
+            if s.get("output"):
+                out_summary = json.dumps(s["output"], ensure_ascii=False)
+                if len(out_summary) > 120:
+                    out_summary = out_summary[:117] + "..."
+                lines.append(f"     Output:    {out_summary}")
+            lines.append("-" * 80)
+
+        return "\n".join(lines)
+
+    def verify_integrity(self) -> dict[str, Any]:
+        """Verify the structural integrity and continuity of trace entries."""
+        steps = self.load_steps()
+        total = len(steps)
+        valid_ids = sum(1 for s in steps if s.get("trace_id", "").startswith("TRC-"))
+        return {
+            "total_steps": total,
+            "valid_trace_ids": valid_ids,
+            "intact": total > 0 and valid_ids == total,
+        }

@@ -143,22 +143,37 @@ python -m src.cli.main process sample_docs/
 `
 
 ### 5. Inspect Results
-Inspect decisions and audit traces from a completed run:
-`powershell
+Inspect decisions from a completed run:
+```powershell
 python -m src.cli.main inspect <JOB_ID>
-`
+```
 
-Export job reports in JSON or Markdown:
-`powershell
-python -m src.cli.main report <JOB_ID> --format markdown
-`
+Export job reports in Markdown or JSON:
+```powershell
+python -m src.cli.main report <JOB_ID> --type summary
+python -m src.cli.main report <JOB_ID> --type contradictions
+python -m src.cli.main report <JOB_ID> --type unresolved
+python -m src.cli.main report <JOB_ID> --format json
+```
+
+Forensically replay cryptographic decision traces:
+```powershell
+python -m src.cli.main replay <JOB_ID>
+python -m src.cli.main replay <JOB_ID> --decision-id <DECISION_ID>
+```
+
+Execute automated evaluation benchmarks:
+```powershell
+python -m src.cli.main benchmark
+python -m src.cli.main benchmark --format json
+```
 
 ### 6. Launch the Interactive API Server
 Start the FastAPI server with auto-generated Swagger documentation:
-`powershell
+```powershell
 python -m src.cli.main serve --port 8000
-`
-Navigate to http://127.0.0.1:8000/docs in any browser to interactively upload documents, inspect decision cards, and query job statuses.
+```
+Navigate to http://127.0.0.1:8000/docs in any browser to interactively upload documents, inspect decision cards, stream traces, and query job statuses.
 
 ---
 
@@ -166,11 +181,19 @@ Navigate to http://127.0.0.1:8000/docs in any browser to interactively upload do
 
 | Document | Purpose |
 |---|---|
-| [docs/PROJECT_IDEATION.md](file:///d:/projects/superjoin/EVIDRA/docs/PROJECT_IDEATION.md) | Original design philosophy, scope boundaries, and thesis statement. |
-| [docs/ARCHITECTURE.md](file:///d:/projects/superjoin/EVIDRA/docs/ARCHITECTURE.md) | Comprehensive 4-layer system architecture and data topology specification. |
-| [docs/SRS.md](file:///d:/projects/superjoin/EVIDRA/docs/SRS.md) | IEEE 830-aligned Software Requirements Specification and traceability matrix. |
-| [docs/TECH_STACK.md](file:///d:/projects/superjoin/EVIDRA/docs/TECH_STACK.md) | Frozen technology stack selections, dependencies, and explicit exclusions. |
-| [docs/DELIVERABLES_DEFINITION.md](file:///d:/projects/superjoin/EVIDRA/docs/DELIVERABLES_DEFINITION.md) | Master deliverables definition and phase gate exit criteria (D0 through D5). |
-| [docs/repository_structure.md](file:///d:/projects/superjoin/EVIDRA/docs/repository_structure.md) | Complete directory tree layout and module responsibility guide. |
-| [docs/deliverable_plans/D1_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/EVIDRA/docs/deliverable_plans/D1_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 1. |
-| [docs/deliverable_plans/D0_AND_D1_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/EVIDRA/docs/deliverable_plans/D0_AND_D1_TESTING_AND_VERIFICATION_PLAN.md) | Automated and manual testing guide for D0 and D1. |
+| [docs/PROJECT_IDEATION.md](file:///d:/projects/superjoin/project/docs/PROJECT_IDEATION.md) | Original design philosophy, scope boundaries, and thesis statement. |
+| [docs/ARCHITECTURE.md](file:///d:/projects/superjoin/project/docs/ARCHITECTURE.md) | Comprehensive 4-layer system architecture and data topology specification. |
+| [docs/SRS.md](file:///d:/projects/superjoin/project/docs/SRS.md) | IEEE 830-aligned Software Requirements Specification and traceability matrix. |
+| [docs/TECH_STACK.md](file:///d:/projects/superjoin/project/docs/TECH_STACK.md) | Frozen technology stack selections, dependencies, and explicit exclusions. |
+| [docs/DELIVERABLES_DEFINITION.md](file:///d:/projects/superjoin/project/docs/DELIVERABLES_DEFINITION.md) | Master deliverables definition and phase gate exit criteria (D0 through D5). |
+| [docs/repository_structure.md](file:///d:/projects/superjoin/project/docs/repository_structure.md) | Complete directory tree layout and module responsibility guide. |
+| [docs/deliverable_plans/D1_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D1_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 1. |
+| [docs/deliverable_plans/D0_AND_D1_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D0_AND_D1_TESTING_AND_VERIFICATION_PLAN.md) | Automated and manual testing guide for D0 and D1. |
+| [docs/deliverable_plans/D2_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D2_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 2 (Ingestion & Extraction). |
+| [docs/deliverable_plans/D2_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D2_TESTING_AND_VERIFICATION_PLAN.md) | Testing and verification guide for Deliverable 2. |
+| [docs/deliverable_plans/D3_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D3_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 3 (Normalization & Grouping). |
+| [docs/deliverable_plans/D3_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D3_TESTING_AND_VERIFICATION_PLAN.md) | Testing and verification guide for Deliverable 3. |
+| [docs/deliverable_plans/D4_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D4_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 4 (Fact Decision Engine). |
+| [docs/deliverable_plans/D4_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D4_TESTING_AND_VERIFICATION_PLAN.md) | Testing and verification guide for Deliverable 4. |
+| [docs/deliverable_plans/D5_IMPLEMENTATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D5_IMPLEMENTATION_PLAN.md) | Technical implementation plan for Deliverable 5 (Observability & Evaluation). |
+| [docs/deliverable_plans/D5_TESTING_AND_VERIFICATION_PLAN.md](file:///d:/projects/superjoin/project/docs/deliverable_plans/D5_TESTING_AND_VERIFICATION_PLAN.md) | Testing and verification guide for Deliverable 5. |

@@ -21,11 +21,12 @@ class ReportGenerator:
         self.reports_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_all_reports(self) -> dict[str, Path]:
-        """Generate summary.md, contradictions.md, and unresolved.md."""
+        """Generate summary.md, contradictions.md, unresolved.md, and summary.json."""
         return {
             "summary": self.generate_summary_report(),
             "contradictions": self.generate_contradictions_report(),
             "unresolved": self.generate_unresolved_report(),
+            "json": self.generate_json_summary(),
         }
 
     def generate_summary_report(self) -> Path:
@@ -146,8 +147,8 @@ class ReportGenerator:
                     "",
                     "#### Competing Fact Claims",
                     "",
-                    "| # | Source Document | Page | Stated Value | Normalized Value | Unit / Currency |",
-                    "| :--- | :--- | :--- | :--- | :--- | :--- |",
+                    "| # | Source Document | Page | Stated Value | Normalized Value | Unit / Currency | Coordinates [x0, y0, x1, y1] |",
+                    "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
                 ])
 
                 claims = card.get("claims", [])
@@ -157,9 +158,21 @@ class ReportGenerator:
                     stated = claim.get("raw_value", "N/A")
                     norm_val = claim.get("normalized_value", "N/A")
                     unit = f"{claim.get('normalized_unit', '')} {claim.get('normalized_currency', '')}".strip()
+                    bbox = claim.get("bounding_box", [])
+                    bbox_str = f"`{bbox}`" if bbox else "N/A"
                     lines.append(
-                        f"| {c_idx} | {doc_name} | Page {page_num} | `{stated}` | `{norm_val}` | {unit} |"
+                        f"| {c_idx} | {doc_name} | Page {page_num} | `{stated}` | `{norm_val}` | {unit} | {bbox_str} |"
                     )
+
+                # Add verbatim evidence context snippets
+                lines.extend(["", "##### Verbatim Source Evidence Context", ""])
+                for c_idx, claim in enumerate(claims, start=1):
+                    doc_name = claim.get("filename", "Unknown Document")
+                    page_num = claim.get("page_number", 1)
+                    content_snip = claim.get("content", "").strip().replace("\n", " ")
+                    if len(content_snip) > 180:
+                        content_snip = content_snip[:177] + "..."
+                    lines.append(f"- **Claim {c_idx}** ({doc_name}, p.{page_num}): *\"{content_snip}\"*")
 
                 hypotheses = card.get("hypotheses", [])
                 if hypotheses:
@@ -177,6 +190,24 @@ class ReportGenerator:
                         validators = h.get("validators", [])
                         status = validators[0].get("outcome", "EVALUATED") if validators else "EVALUATED"
                         lines.append(f"| {h_type} | {desc} | {score} | {status} |")
+
+                traces = card.get("traces", [])
+                skeptic_trace = next((t for t in traces if "critique" in t.get("step_name", "").lower()), None)
+                if skeptic_trace and skeptic_trace.get("output_json"):
+                    try:
+                        out_dict = json.loads(skeptic_trace["output_json"])
+                        critique = out_dict.get("critique")
+                        skeptic_status = out_dict.get("skeptic_status")
+                        if critique or skeptic_status:
+                            lines.extend([
+                                "",
+                                "#### Adversarial Skeptic Audit",
+                                "",
+                                f"- **Status:** `{skeptic_status}`",
+                                f"- **Critique:** {critique}",
+                            ])
+                    except Exception:
+                        pass
 
                 lines.extend(["", "---", ""])
 
@@ -261,4 +292,25 @@ class ReportGenerator:
         report_path = self.reports_dir / "unresolved.md"
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(content)
+        return report_path
+
+    def generate_json_summary(self) -> Path:
+        """Generate structured summary.json containing metrics and decisions."""
+        summary = self.ledger.get_job_summary()
+        documents = self.ledger.get_documents()
+        decisions = self.ledger.get_decisions()
+        manifest = self.ctx.get_manifest()
+
+        payload = {
+            "job_id": self.ctx.job_id,
+            "created_at": manifest.get("created_at"),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "status": manifest.get("status", "COMPLETED"),
+            "documents": documents,
+            "summary": summary,
+            "decisions": decisions,
+        }
+        report_path = self.reports_dir / "summary.json"
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
         return report_path

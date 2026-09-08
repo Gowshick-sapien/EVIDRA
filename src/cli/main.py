@@ -211,13 +211,18 @@ def handle_report(args: argparse.Namespace) -> int:
         return 1
 
     if args.format == "json":
+        json_report = job_dir / "reports" / "summary.json"
+        if json_report.exists():
+            with open(json_report, "r", encoding="utf-8") as f:
+                print(f.read())
+            return 0
         manifest_path = job_dir / "run.json"
         if manifest_path.exists():
             with open(manifest_path, "r", encoding="utf-8") as f:
                 print(f.read())
             return 0
         else:
-            print("Error: run.json not found.", file=sys.stderr)
+            print("Error: Report JSON and run.json not found.", file=sys.stderr)
             return 1
     else:
         report_name = f"{args.type.lower().replace('-', '_')}.md"
@@ -239,6 +244,43 @@ def handle_report(args: argparse.Namespace) -> int:
                 return 0
             print(f"Error: Report '{report_name}' not found for job '{args.job_id}'.", file=sys.stderr)
             return 1
+
+
+def handle_replay(args: argparse.Namespace) -> int:
+    """Execute the replay command to chronologically inspect decision audit traces."""
+    runs_dir = Path(args.runs_dir) if args.runs_dir else Path("runs")
+    job_dir = runs_dir / args.job_id
+
+    if not job_dir.exists():
+        print(f"Error: Job directory '{job_dir}' not found.", file=sys.stderr)
+        return 1
+
+    from src.observability.trace import TraceReplayer
+
+    replayer = TraceReplayer(
+        trace_path=job_dir / "traces" / "trace.jsonl",
+        db_path=job_dir / "ledger.db",
+    )
+
+    timeline = replayer.render_timeline(decision_id=args.decision_id)
+    print(timeline)
+    return 0
+
+
+def handle_benchmark(args: argparse.Namespace) -> int:
+    """Execute the mandatory evaluation benchmarks and display scorecard."""
+    from src.observability.evaluator import EvaluationHarness, run_all_benchmarks
+
+    print("Running EVIDRA mandatory assignment benchmark scenarios...")
+    metrics = run_all_benchmarks()
+
+    if getattr(args, "format", "text") == "json":
+        print(metrics.model_dump_json(indent=2))
+    else:
+        scorecard = EvaluationHarness.render_scorecard(metrics)
+        print("\n" + scorecard)
+
+    return 0 if metrics.accuracy == 100.0 else 1
 
 
 def handle_serve(args: argparse.Namespace) -> int:
@@ -290,6 +332,16 @@ def build_parser() -> argparse.ArgumentParser:
     srv_parser.add_argument("--port", type=int, default=8000, help="Port binding (default: 8000)")
     srv_parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
 
+    # replay subcommand
+    replay_parser = subparsers.add_parser("replay", help="Replay chronological audit traces for a job or decision")
+    replay_parser.add_argument("job_id", help="Job identifier")
+    replay_parser.add_argument("--decision-id", help="Filter replay by specific decision identifier")
+    replay_parser.add_argument("--runs-dir", default="runs", help="Base directory for job runs (default: runs)")
+
+    # benchmark subcommand
+    bench_parser = subparsers.add_parser("benchmark", help="Run mandatory evaluation benchmark scenarios")
+    bench_parser.add_argument("--format", default="text", choices=["text", "json"], help="Output format (default: text)")
+
     return parser
 
 
@@ -313,6 +365,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         return handle_inspect(args)
     elif args.command == "report":
         return handle_report(args)
+    elif args.command == "replay":
+        return handle_replay(args)
+    elif args.command == "benchmark":
+        return handle_benchmark(args)
     elif args.command == "serve":
         return handle_serve(args)
     else:

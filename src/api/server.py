@@ -23,6 +23,8 @@ from src.api.models import (
     HealthResponse,
     JobCreateResponse,
     JobStatusResponse,
+    TraceItemResponse,
+    TraceListResponse,
 )
 import hashlib
 # pyrefly: ignore [missing-import]
@@ -36,7 +38,7 @@ from src.decision.engine import FactDecisionEngine
 # pyrefly: ignore [missing-import]
 from src.observability.reports import ReportGenerator
 # pyrefly: ignore [missing-import]
-from src.observability.trace import RunContext, TraceLogger
+from src.observability.trace import RunContext, TraceLogger, TraceReplayer
 
 
 def create_app(runs_root: Path | str = "runs") -> FastAPI:
@@ -311,6 +313,60 @@ def create_app(runs_root: Path | str = "runs") -> FastAPI:
 
         with open(report_file, "r", encoding="utf-8") as f:
             return f.read()
+
+    @app.get("/jobs/{job_id}/traces", response_model=TraceListResponse, tags=["Traces"])
+    def get_job_traces(job_id: str) -> TraceListResponse:
+        """Retrieve all chronological audit trace steps recorded for a job."""
+        job_dir = runs_path / job_id
+        if not job_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+        replayer = TraceReplayer(
+            trace_path=job_dir / "traces" / "trace.jsonl",
+            db_path=job_dir / "ledger.db",
+        )
+        raw_steps = replayer.load_steps()
+        traces = [
+            TraceItemResponse(
+                trace_id=s.get("trace_id", ""),
+                decision_id=s.get("decision_id"),
+                timestamp=s.get("timestamp", ""),
+                step_name=s.get("step_name", ""),
+                agent_name=s.get("agent_name", ""),
+                latency_ms=s.get("latency_ms", 0.0),
+                input=s.get("input", {}),
+                output=s.get("output", {}),
+            )
+            for s in raw_steps
+        ]
+        return TraceListResponse(job_id=job_id, count=len(traces), traces=traces)
+
+    @app.get("/jobs/{job_id}/traces/{decision_id}", response_model=TraceListResponse, tags=["Traces"])
+    def get_decision_traces(job_id: str, decision_id: str) -> TraceListResponse:
+        """Retrieve audit trace steps specific to an individual decision."""
+        job_dir = runs_path / job_id
+        if not job_dir.exists():
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
+
+        replayer = TraceReplayer(
+            trace_path=job_dir / "traces" / "trace.jsonl",
+            db_path=job_dir / "ledger.db",
+        )
+        raw_steps = replayer.load_steps(decision_id=decision_id)
+        traces = [
+            TraceItemResponse(
+                trace_id=s.get("trace_id", ""),
+                decision_id=s.get("decision_id"),
+                timestamp=s.get("timestamp", ""),
+                step_name=s.get("step_name", ""),
+                agent_name=s.get("agent_name", ""),
+                latency_ms=s.get("latency_ms", 0.0),
+                input=s.get("input", {}),
+                output=s.get("output", {}),
+            )
+            for s in raw_steps
+        ]
+        return TraceListResponse(job_id=job_id, decision_id=decision_id, count=len(traces), traces=traces)
 
     return app
 

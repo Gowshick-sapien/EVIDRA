@@ -139,3 +139,56 @@ def test_job_reports(client_and_root):
     # Missing report
     resp_missing = client.get(f"/jobs/{job_id}/reports/contradictions")
     assert resp_missing.status_code == 404
+
+
+def test_job_traces(client_and_root):
+    import json
+    client, runs_root = client_and_root
+    job_id = "JOB-TEST-TRACES"
+    job_dir = runs_root / job_id
+    traces_dir = job_dir / "traces"
+    traces_dir.mkdir(parents=True, exist_ok=True)
+
+    trace_file = traces_dir / "trace.jsonl"
+    entry1 = {
+        "trace_id": "TRC-01",
+        "decision_id": "DEC-A",
+        "timestamp": "2026-09-08T00:00:00Z",
+        "step_name": "step_one",
+        "agent_name": "agent_one",
+        "latency_ms": 1.5,
+        "input": {"param": 1},
+        "output": {"result": True},
+    }
+    entry2 = {
+        "trace_id": "TRC-02",
+        "decision_id": "DEC-B",
+        "timestamp": "2026-09-08T00:00:01Z",
+        "step_name": "step_two",
+        "agent_name": "agent_two",
+        "latency_ms": 2.0,
+        "input": {"param": 2},
+        "output": {"result": False},
+    }
+    with open(trace_file, "w", encoding="utf-8") as f:
+        f.write(json.dumps(entry1) + "\n" + json.dumps(entry2) + "\n")
+
+    # 1. Get all traces for job
+    resp = client.get(f"/jobs/{job_id}/traces")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["job_id"] == job_id
+    assert data["count"] == 2
+    assert data["traces"][0]["trace_id"] == "TRC-01"
+    assert data["traces"][1]["trace_id"] == "TRC-02"
+
+    # 2. Get filtered traces for specific decision
+    resp_dec = client.get(f"/jobs/{job_id}/traces/DEC-A")
+    assert resp_dec.status_code == 200
+    data_dec = resp_dec.json()
+    assert data_dec["count"] == 1
+    assert data_dec["traces"][0]["decision_id"] == "DEC-A"
+
+    # 3. Nonexistent job
+    resp_404 = client.get("/jobs/NONEXISTENT-JOB/traces")
+    assert resp_404.status_code == 404
