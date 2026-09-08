@@ -194,6 +194,7 @@ Inspect the generated reports located in `runs/JOB-<timestamp>/reports/`:
 EVIDRA provides two distinct tiers of documentation:
 
 ### 6.1 Evaluator and User Documentation
+- **[Repository Overview & Inspection Guide](docs/REPOSITORY_OVERVIEW.md):** Complete directory map outlining document purposes, source code modules, test locations, and real-world manual verification artifacts.
 - **[Proposed Solution](docs/PROPOSED_SOLUTION.md):** The comprehensive architectural blueprint, detailing the 6 core pillars, 4-stage pipeline, and real-world case studies on corporate data.
 - **[Operational Runbook & Execution Guide](docs/RUN_PLAN.md):** Complete operational manual with step-by-step diagnostic workflows, advanced CLI options, and API reference.
 

@@ -4,6 +4,7 @@ This directory contains the internal engineering specifications, software requir
 
 If you are an external evaluator, reviewer, or user looking for the high-level system overview, please refer to the primary publishable documentation:
 - **Project Overview & Quickstart:** [README.md](file:///d:/projects/superjoin/EVIDRA/README.md)
+- **Repository Overview & Inspection Guide:** [docs/REPOSITORY_OVERVIEW.md](file:///d:/projects/superjoin/EVIDRA/docs/REPOSITORY_OVERVIEW.md)
 - **Proposed Solution:** [docs/PROPOSED_SOLUTION.md](file:///d:/projects/superjoin/EVIDRA/docs/PROPOSED_SOLUTION.md)
 
 ---
