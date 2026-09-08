@@ -2,6 +2,11 @@
 
 ## Evidence-Driven Knowledge Layer for Multi-Document Fact Validation and Reconciliation
 
+> **Core Architectural and Evaluation Documentation:**  
+> - To view the complete solution blueprint, the 6 core pillars, and real-world corporate case studies, see **[Proposed Solution](docs/PROPOSED_SOLUTION.md)**.  
+> - To inspect the comprehensive 4-layer technical architecture specification, system dataflows, and operational invariants, see **[Architecture Specification](docs/developer/ARCHITECTURE_README.md)**.  
+> - For a full directory map of documents, source code modules, tests, and verification artifacts, see **[Repository Overview & Inspection Guide](docs/REPOSITORY_OVERVIEW.md)**.  
+
 ---
 
 ## 1. Overview
