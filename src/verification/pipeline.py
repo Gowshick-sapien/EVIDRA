@@ -6,11 +6,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 # pyrefly: ignore [missing-import]
-from src.db.ledger import EvidenceLedger, FactCandidateRecord
+from src.db.ledger import EvidenceLedger, FactCandidateRecord, FactIdentityRecord
 # pyrefly: ignore [missing-import]
 from src.llm.provider import OllamaProvider, ReasoningService
 # pyrefly: ignore [missing-import]
 from src.matching.embeddings import FactGroupEngine
+# pyrefly: ignore [missing-import]
+from src.matching.identity import FactIdentityBuilder, FactIdentitySignature
 # pyrefly: ignore [missing-import]
 from src.observability.trace import TraceLogger
 # pyrefly: ignore [missing-import]
@@ -129,6 +131,7 @@ class VerificationPipeline:
                 "normalized_value": normalized_val_str,
                 "period_start": period_start,
                 "period_end": period_end,
+                "statement": statement,
             })
 
         # 2. Bulk insert Fact Candidates into SQLite
@@ -136,6 +139,43 @@ class VerificationPipeline:
         if fact_records:
             candidates_inserted = self.ledger.insert_fact_candidates(fact_records)
             logger.info(f"Persisted {candidates_inserted} fact candidates to ledger.")
+
+            # Build and persist FactIdentitySignatures
+            identity_records: list[FactIdentityRecord] = []
+            for c_dict in candidate_dicts:
+                fid = c_dict["fact_id"]
+                sig = FactIdentityBuilder.build(
+                    fact_id=fid,
+                    observation={
+                        "entity": c_dict["entity"],
+                        "attribute": c_dict["attribute"],
+                        "raw_value": c_dict["raw_value"],
+                        "unit": "",
+                        "statement": c_dict.get("statement", ""),
+                    },
+                    period_start=c_dict["period_start"],
+                    period_end=c_dict["period_end"],
+                )
+                identity_records.append(
+                    FactIdentityRecord(
+                        identity_id=sig.identity_id,
+                        fact_id=sig.fact_id,
+                        entity_canonical=sig.entity_canonical,
+                        metric_family=sig.metric_family,
+                        metric_subtype=sig.metric_subtype,
+                        measurement_type=sig.measurement_type.value,
+                        surface_metric=sig.surface_metric,
+                        period_start=sig.period_start,
+                        period_end=sig.period_end,
+                        scope=sig.scope,
+                        basis=sig.basis,
+                        definition=sig.definition,
+                        geography=sig.geography,
+                        source_type=sig.source_type,
+                    )
+                )
+            if identity_records:
+                self.ledger.insert_fact_identities(identity_records)
 
         # 3. Two-Tier Candidate Grouping (can be deferred for multi-document batching)
         groups_created = 0 if defer_grouping else self.group_candidates()
@@ -193,7 +233,28 @@ class VerificationPipeline:
             for row in rows
         ]
 
-        grouped = self.group_engine.group_candidates(candidate_dicts)
+        # Fetch signatures for 4-gate resolution
+        stored_identities = self.ledger.get_all_fact_identities()
+        signatures_map: dict[str, FactIdentitySignature] = {}
+        for fid, rec in stored_identities.items():
+            signatures_map[fid] = FactIdentitySignature(
+                identity_id=rec.identity_id,
+                fact_id=rec.fact_id,
+                entity_canonical=rec.entity_canonical,
+                metric_family=rec.metric_family,
+                metric_subtype=rec.metric_subtype,
+                measurement_type=rec.measurement_type,
+                surface_metric=rec.surface_metric,
+                period_start=rec.period_start,
+                period_end=rec.period_end,
+                scope=rec.scope,
+                basis=rec.basis,
+                definition=rec.definition,
+                geography=rec.geography,
+                source_type=rec.source_type,
+            )
+
+        grouped = self.group_engine.group_candidates(candidate_dicts, signatures=signatures_map)
         groups_created = 0
         for group_rec, fact_ids in grouped:
             self.ledger.create_fact_group(
@@ -202,6 +263,10 @@ class VerificationPipeline:
                 period_id=group_rec.period_id,
                 fact_ids=fact_ids,
                 group_id=group_rec.group_id,
+                metric_family=getattr(group_rec, "metric_family", ""),
+                metric_subtype=getattr(group_rec, "metric_subtype", ""),
+                measurement_type=getattr(group_rec, "measurement_type", "UNKNOWN"),
+                group_type=getattr(group_rec, "group_type", "DIRECT_COMPARISON"),
             )
             groups_created += 1
 

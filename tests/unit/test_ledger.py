@@ -15,6 +15,8 @@ from src.db.ledger import (
     EvidenceWindowRecord,
     ObservationRecord,
     FactCandidateRecord,
+    FactIdentityRecord,
+    ClaimRelationshipRecord,
     HypothesisRecord,
     ValidatorResultRecord,
     DecisionRecord,
@@ -43,8 +45,10 @@ def test_schema_initialization(temp_ledger):
         "evidence_windows",
         "observations",
         "fact_candidates",
+        "fact_identities",
         "fact_groups",
         "group_members",
+        "claim_relationships",
         "hypotheses",
         "validator_results",
         "decisions",
@@ -298,3 +302,101 @@ def test_evidence_windows_crud(temp_ledger):
     assert retrieved2.section_title == "Updated Section"
     assert retrieved2.section_confidence == 0.95
     assert retrieved2.stated_unit == "lakh"
+
+
+def test_p1_fact_identities_and_claim_relationships(temp_ledger):
+    """Verify persistence of FactIdentitySignatures and ClaimRelationshipGraph edges."""
+    doc = DocumentRecord("DOC-P1", "Report.pdf", "hash_p1", 5)
+    temp_ledger.insert_document(doc)
+
+    chunks = [
+        EvidenceChunkRecord("CHK-P1A", "DOC-P1", 1, "text", [0, 0, 100, 100], "Revenue is 500 Cr", "hash_p1a"),
+        EvidenceChunkRecord("CHK-P1B", "DOC-P1", 2, "text", [0, 0, 100, 100], "Revenue is 500 Cr", "hash_p1b"),
+    ]
+    temp_ledger.insert_evidence_chunks(chunks)
+
+    obs = [
+        ObservationRecord("OBS-P1A", "CHK-P1A", "DOC-P1", "Revenue 500 Cr", "Delhivery", "revenue", "500 Cr", "numerical", "FY24", "ENTAILED", 1.0),
+        ObservationRecord("OBS-P1B", "CHK-P1B", "DOC-P1", "Revenue 500 Cr", "Delhivery", "revenue", "500 Cr", "numerical", "FY24", "ENTAILED", 1.0),
+    ]
+    temp_ledger.insert_observations(obs)
+
+    facts = [
+        FactCandidateRecord("FCT-P1A", "OBS-P1A", "5000000000", "SCALED_CRORE", "INR", "2023-04-01", "2024-03-31"),
+        FactCandidateRecord("FCT-P1B", "OBS-P1B", "5000000000", "SCALED_CRORE", "INR", "2023-04-01", "2024-03-31"),
+    ]
+    temp_ledger.insert_fact_candidates(facts)
+
+    # 1. Fact Identity Signatures
+    identities = [
+        FactIdentityRecord(
+            identity_id="ID-P1A",
+            fact_id="FCT-P1A",
+            entity_canonical="Delhivery Limited",
+            metric_family="REVENUE",
+            metric_subtype="OPERATING_REVENUE",
+            measurement_type="ABSOLUTE_VALUE",
+            surface_metric="Revenue from Operations",
+            period_start="2023-04-01",
+            period_end="2024-03-31",
+            scope="CONSOLIDATED",
+            basis="IND_AS",
+        ),
+        FactIdentityRecord(
+            identity_id="ID-P1B",
+            fact_id="FCT-P1B",
+            entity_canonical="Delhivery Limited",
+            metric_family="REVENUE",
+            metric_subtype="OPERATING_REVENUE",
+            measurement_type="ABSOLUTE_VALUE",
+            surface_metric="Revenue from operations",
+            period_start="2023-04-01",
+            period_end="2024-03-31",
+            scope="CONSOLIDATED",
+            basis="IND_AS",
+        ),
+    ]
+    inserted_ids = temp_ledger.insert_fact_identities(identities)
+    assert inserted_ids == 2
+
+    retrieved_id = temp_ledger.get_fact_identity("FCT-P1A")
+    assert retrieved_id is not None
+    assert retrieved_id.entity_canonical == "Delhivery Limited"
+    assert retrieved_id.metric_family == "REVENUE"
+    assert retrieved_id.measurement_type == "ABSOLUTE_VALUE"
+
+    all_ids = temp_ledger.get_all_fact_identities()
+    assert "FCT-P1A" in all_ids
+    assert "FCT-P1B" in all_ids
+
+    # 2. Fact Group with P1 metadata
+    group_id = temp_ledger.create_fact_group(
+        entity="Delhivery Limited",
+        attribute="OPERATING_REVENUE",
+        period_id="2023-04-01_2024-03-31",
+        fact_ids=["FCT-P1A", "FCT-P1B"],
+        group_id="GRP-P1-001",
+        metric_family="REVENUE",
+        metric_subtype="OPERATING_REVENUE",
+        measurement_type="ABSOLUTE_VALUE",
+        group_type="DIRECT_COMPARISON",
+    )
+    assert group_id == "GRP-P1-001"
+
+    # 3. Claim Relationships
+    rel = ClaimRelationshipRecord(
+        relationship_id="REL-001",
+        group_id=group_id,
+        source_fact_id="FCT-P1A",
+        target_fact_id="FCT-P1B",
+        relationship_type="CORROBORATES",
+        variance_percentage=0.0,
+        bridge_explanation="Exact numerical match across documents",
+    )
+    temp_ledger.insert_claim_relationships([rel])
+
+    rels = temp_ledger.get_claim_relationships_for_group(group_id)
+    assert len(rels) == 1
+    assert rels[0].relationship_type == "CORROBORATES"
+    assert rels[0].source_fact_id == "FCT-P1A"
+

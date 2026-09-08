@@ -88,7 +88,44 @@ class FactGroupRecord:
     attribute: str
     period_id: str
     member_count: int = 0
+    metric_family: str = ""
+    metric_subtype: str = ""
+    measurement_type: str = "UNKNOWN"
+    group_type: str = "DIRECT_COMPARISON"
     created_at: Optional[str] = None
+
+
+@dataclass
+class FactIdentityRecord:
+    identity_id: str
+    fact_id: str
+    entity_canonical: str
+    metric_family: str
+    metric_subtype: str
+    measurement_type: str
+    surface_metric: str
+    period_start: str
+    period_end: str
+    scope: str = "UNKNOWN"
+    basis: str = "UNKNOWN"
+    definition: str = ""
+    geography: str = ""
+    source_type: str = ""
+    created_at: Optional[str] = None
+
+
+@dataclass
+class ClaimRelationshipRecord:
+    relationship_id: str
+    group_id: str
+    source_fact_id: str
+    target_fact_id: str
+    relationship_type: str  # CORROBORATES, CONFLICTS_WITH, RECONCILES_WITH, INCONCLUSIVE
+    variance_percentage: float = 0.0
+    bridge_explanation: str = ""
+    details_json: str = "{}"
+    created_at: Optional[str] = None
+
 
 
 @dataclass
@@ -171,6 +208,20 @@ class EvidenceLedger:
                 ddl = f.read()
             with self.transaction() as conn:
                 conn.executescript(ddl)
+                # Defensively migrate existing fact_groups table if columns missing
+                try:
+                    cursor = conn.execute("PRAGMA table_info(fact_groups);")
+                    existing_cols = {row[1] for row in cursor.fetchall()}
+                    if "metric_family" not in existing_cols:
+                        conn.execute("ALTER TABLE fact_groups ADD COLUMN metric_family TEXT DEFAULT '';")
+                    if "metric_subtype" not in existing_cols:
+                        conn.execute("ALTER TABLE fact_groups ADD COLUMN metric_subtype TEXT DEFAULT '';")
+                    if "measurement_type" not in existing_cols:
+                        conn.execute("ALTER TABLE fact_groups ADD COLUMN measurement_type TEXT DEFAULT 'UNKNOWN';")
+                    if "group_type" not in existing_cols:
+                        conn.execute("ALTER TABLE fact_groups ADD COLUMN group_type TEXT DEFAULT 'DIRECT_COMPARISON';")
+                except Exception:
+                    pass
         else:
             raise FileNotFoundError(f"Schema file not found at {schema_file}")
 
@@ -394,22 +445,182 @@ class EvidenceLedger:
         period_id: str,
         fact_ids: list[str],
         group_id: Optional[str] = None,
+        metric_family: str = "",
+        metric_subtype: str = "",
+        measurement_type: str = "UNKNOWN",
+        group_type: str = "DIRECT_COMPARISON",
     ) -> str:
         """Create a fact group and associate its member fact candidates."""
         gid = group_id or f"GRP-{uuid.uuid4().hex[:8]}"
         group_query = """
-            INSERT INTO fact_groups (group_id, entity, attribute, period_id, member_count)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO fact_groups (
+                group_id, entity, attribute, period_id, member_count,
+                metric_family, metric_subtype, measurement_type, group_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         member_query = """
             INSERT INTO group_members (group_id, fact_id)
             VALUES (?, ?)
         """
         with self.transaction() as conn:
-            conn.execute(group_query, (gid, entity, attribute, period_id, len(fact_ids)))
+            conn.execute(
+                group_query,
+                (
+                    gid, entity, attribute, period_id, len(fact_ids),
+                    metric_family, metric_subtype, measurement_type, group_type,
+                ),
+            )
             for fid in fact_ids:
                 conn.execute(member_query, (gid, fid))
         return gid
+
+    def insert_fact_identities(self, identities: list[FactIdentityRecord]) -> int:
+        """Bulk insert fact identity signatures."""
+        if not identities:
+            return 0
+        query = """
+            INSERT INTO fact_identities (
+                identity_id, fact_id, entity_canonical, metric_family, metric_subtype,
+                measurement_type, surface_metric, period_start, period_end,
+                scope, basis, definition, geography, source_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fact_id) DO UPDATE SET
+                entity_canonical=excluded.entity_canonical,
+                metric_family=excluded.metric_family,
+                metric_subtype=excluded.metric_subtype,
+                measurement_type=excluded.measurement_type,
+                surface_metric=excluded.surface_metric,
+                period_start=excluded.period_start,
+                period_end=excluded.period_end,
+                scope=excluded.scope,
+                basis=excluded.basis,
+                definition=excluded.definition,
+                geography=excluded.geography,
+                source_type=excluded.source_type
+        """
+        rows = [
+            (
+                i.identity_id,
+                i.fact_id,
+                i.entity_canonical,
+                i.metric_family,
+                i.metric_subtype,
+                i.measurement_type,
+                i.surface_metric,
+                i.period_start,
+                i.period_end,
+                i.scope,
+                i.basis,
+                i.definition,
+                i.geography,
+                i.source_type,
+            )
+            for i in identities
+        ]
+        with self.transaction() as conn:
+            conn.executemany(query, rows)
+        return len(identities)
+
+    def get_fact_identity(self, fact_id: str) -> Optional[FactIdentityRecord]:
+        """Retrieve the identity signature for a fact candidate."""
+        query = "SELECT * FROM fact_identities WHERE fact_id = ?"
+        with self.transaction() as conn:
+            row = conn.execute(query, (fact_id,)).fetchone()
+            if not row:
+                return None
+            return FactIdentityRecord(
+                identity_id=row["identity_id"],
+                fact_id=row["fact_id"],
+                entity_canonical=row["entity_canonical"],
+                metric_family=row["metric_family"],
+                metric_subtype=row["metric_subtype"],
+                measurement_type=row["measurement_type"],
+                surface_metric=row["surface_metric"],
+                period_start=row["period_start"],
+                period_end=row["period_end"],
+                scope=row["scope"],
+                basis=row["basis"],
+                definition=row["definition"],
+                geography=row["geography"],
+                source_type=row["source_type"],
+                created_at=row["created_at"],
+            )
+
+    def get_all_fact_identities(self) -> dict[str, FactIdentityRecord]:
+        """Retrieve all fact identity signatures keyed by fact_id."""
+        query = "SELECT * FROM fact_identities"
+        with self.transaction() as conn:
+            rows = conn.execute(query).fetchall()
+            return {
+                r["fact_id"]: FactIdentityRecord(
+                    identity_id=r["identity_id"],
+                    fact_id=r["fact_id"],
+                    entity_canonical=r["entity_canonical"],
+                    metric_family=r["metric_family"],
+                    metric_subtype=r["metric_subtype"],
+                    measurement_type=r["measurement_type"],
+                    surface_metric=r["surface_metric"],
+                    period_start=r["period_start"],
+                    period_end=r["period_end"],
+                    scope=r["scope"],
+                    basis=r["basis"],
+                    definition=r["definition"],
+                    geography=r["geography"],
+                    source_type=r["source_type"],
+                    created_at=r["created_at"],
+                )
+                for r in rows
+            }
+
+    def insert_claim_relationships(self, relationships: list[ClaimRelationshipRecord]) -> int:
+        """Bulk insert claim relationship graph edges."""
+        if not relationships:
+            return 0
+        query = """
+            INSERT INTO claim_relationships (
+                relationship_id, group_id, source_fact_id, target_fact_id,
+                relationship_type, variance_percentage, bridge_explanation, details_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        rows = [
+            (
+                r.relationship_id,
+                r.group_id,
+                r.source_fact_id,
+                r.target_fact_id,
+                r.relationship_type,
+                r.variance_percentage,
+                r.bridge_explanation,
+                r.details_json,
+            )
+            for r in relationships
+        ]
+        with self.transaction() as conn:
+            conn.executemany(query, rows)
+        return len(relationships)
+
+    def get_claim_relationships_for_group(self, group_id: str) -> list[ClaimRelationshipRecord]:
+        """Retrieve all claim relationship graph edges for a fact group."""
+        query = "SELECT * FROM claim_relationships WHERE group_id = ?"
+        with self.transaction() as conn:
+            rows = conn.execute(query, (group_id,)).fetchall()
+            return [
+                ClaimRelationshipRecord(
+                    relationship_id=r["relationship_id"],
+                    group_id=r["group_id"],
+                    source_fact_id=r["source_fact_id"],
+                    target_fact_id=r["target_fact_id"],
+                    relationship_type=r["relationship_type"],
+                    variance_percentage=float(r["variance_percentage"] or 0.0),
+                    bridge_explanation=r["bridge_explanation"] or "",
+                    details_json=r["details_json"] or "{}",
+                    created_at=r["created_at"],
+                )
+                for r in rows
+            ]
 
     def insert_hypothesis(self, hyp: HypothesisRecord) -> str:
         """Insert a reasoning hypothesis."""

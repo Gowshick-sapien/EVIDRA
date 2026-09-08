@@ -172,3 +172,5 @@ class ObservationBundle(BaseModel):
     numerical_observations: list[NumericalObservation] = Field(default_factory=list)
     semantic_observations: list[SemanticObservation] = Field(default_factory=list)
     event_observations: list[EventObservation] = Field(default_factory=list)
+
+

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
@@ -6,7 +6,11 @@ import time
 import uuid
 from typing import Any, Optional
 # pyrefly: ignore [missing-import]
+from decimal import Decimal, InvalidOperation
+
+# pyrefly: ignore [missing-import]
 from src.db.ledger import (
+    ClaimRelationshipRecord,
     DecisionRecord,
     DecisionTraceRecord,
     EvidenceLedger,
@@ -23,6 +27,37 @@ from src.llm.provider import ReasoningService
 from src.observability.trace import TraceLogger
 
 logger = logging.getLogger(__name__)
+
+
+def cluster_claims_by_value(
+    candidates: list[CandidateFactView],
+    rel_tolerance: float = 0.001,
+) -> list[dict[str, Any]]:
+    """Group candidate claims into equivalence value clusters within relative tolerance."""
+    clusters: list[dict[str, Any]] = []
+    for c in candidates:
+        try:
+            val = Decimal(str(c.normalized_value).replace(",", ""))
+        except (InvalidOperation, ValueError):
+            val = Decimal("0")
+        unit = (c.normalized_unit or "").upper()
+
+        matched = False
+        for cl in clusters:
+            if cl["unit"] == unit:
+                diff = abs(cl["canonical_value"] - val)
+                denom = max(abs(cl["canonical_value"]), abs(val), Decimal("0.000001"))
+                if diff / denom <= Decimal(str(rel_tolerance)):
+                    cl["members"].append(c)
+                    matched = True
+                    break
+        if not matched:
+            clusters.append({
+                "canonical_value": val,
+                "unit": unit,
+                "members": [c],
+            })
+    return clusters
 
 
 class FactDecisionEngine:
@@ -76,42 +111,133 @@ class FactDecisionEngine:
             # Fetch candidate facts with enriched provenance
             candidates = self._fetch_group_candidates(group_id)
 
-            initial_state: FactDecisionState = {
-                "group_id": group_id,
-                "entity": entity,
-                "attribute": attribute,
-                "period_id": period_id,
-                "candidates": [c.model_dump() for c in candidates],
-                "traces": [],
-            }
+            collected_hypotheses: list[dict[str, Any]] = []
+            collected_validators: list[dict[str, Any]] = []
+            collected_traces: list[dict[str, Any]] = []
+            relationships_to_insert: list[ClaimRelationshipRecord] = []
 
-            try:
-                final_state = self.graph.invoke(initial_state)
-            except Exception as e:
-                logger.error(f"Error evaluating group {group_id} in decision graph: {e}", exc_info=True)
-                final_state = {
-                    **initial_state,
-                    "verdict": "UNRESOLVED",
-                    "decision_strength": "INSUFFICIENT",
-                    "reasoning_summary": f"Evaluation error: {str(e)}",
-                    "traces": initial_state.get("traces", []),
-                }
+            if len(candidates) == 0:
+                verdict_str = "UNRESOLVED"
+                strength_str = "INSUFFICIENT"
+                reasoning = "No candidate facts found for group."
+            elif len(candidates) == 1:
+                c_single = candidates[0]
+                verdict_str = "UNRESOLVED"
+                strength_str = "LOW"
+                reasoning = (
+                    f"Single source claim ({c_single.normalized_value} {c_single.normalized_unit}) "
+                    "pending second-source corroboration."
+                )
+            else:
+                # Multi-member / pairwise tournament execution
+                pairs: list[tuple[CandidateFactView, CandidateFactView]] = []
+                for i in range(len(candidates)):
+                    for j in range(i + 1, len(candidates)):
+                        pairs.append((candidates[i], candidates[j]))
 
-            verdict_str = str(final_state.get("verdict", "UNRESOLVED"))
-            if "." in verdict_str:
-                verdict_str = verdict_str.split(".")[-1]
+                for c1, c2 in pairs:
+                    pair_state: FactDecisionState = {
+                        "group_id": group_id,
+                        "entity": entity,
+                        "attribute": attribute,
+                        "period_id": period_id,
+                        "candidates": [c1.model_dump(), c2.model_dump()],
+                        "traces": [],
+                    }
+                    try:
+                        pair_final = self.graph.invoke(pair_state)
+                    except Exception as e:
+                        logger.error(f"Error evaluating pair ({c1.fact_id}, {c2.fact_id}): {e}", exc_info=True)
+                        pair_final = {
+                            **pair_state,
+                            "verdict": "UNRESOLVED",
+                            "decision_strength": "INSUFFICIENT",
+                            "reasoning_summary": f"Pairwise error: {str(e)}",
+                            "traces": [],
+                        }
 
-            strength_str = str(final_state.get("decision_strength", "INSUFFICIENT"))
-            if "." in strength_str:
-                strength_str = strength_str.split(".")[-1]
+                    p_verdict = str(pair_final.get("verdict", "UNRESOLVED"))
+                    if "." in p_verdict:
+                        p_verdict = p_verdict.split(".")[-1]
 
-            reasoning = final_state.get("reasoning_summary", "Decision completed.")
+                    if p_verdict == "CORROBORATED":
+                        rel_type = "CORROBORATES"
+                    elif p_verdict == "RECONCILED":
+                        rel_type = "RECONCILES_WITH"
+                    elif p_verdict == "CONTRADICTION":
+                        rel_type = "CONFLICTS_WITH"
+                    else:
+                        rel_type = "INCONCLUSIVE"
+
+                    try:
+                        v1 = Decimal(str(c1.normalized_value).replace(",", ""))
+                        v2 = Decimal(str(c2.normalized_value).replace(",", ""))
+                        denom = max(abs(v1), abs(v2), Decimal("0.000001"))
+                        var_pct = float(abs(v1 - v2) / denom * 100)
+                    except Exception:
+                        var_pct = 0.0
+
+                    rel_rec = ClaimRelationshipRecord(
+                        relationship_id=f"REL-{uuid.uuid4().hex[:8]}",
+                        group_id=group_id,
+                        source_fact_id=c1.fact_id,
+                        target_fact_id=c2.fact_id,
+                        relationship_type=rel_type,
+                        variance_percentage=round(var_pct, 4),
+                        bridge_explanation=pair_final.get("reasoning_summary", ""),
+                        details_json=json.dumps({
+                            "pair_verdict": p_verdict,
+                            "strength": str(pair_final.get("decision_strength", "INSUFFICIENT")),
+                        }),
+                    )
+                    relationships_to_insert.append(rel_rec)
+
+                    collected_hypotheses.extend(pair_final.get("hypotheses", []))
+                    collected_validators.extend(pair_final.get("validator_results", []))
+                    collected_traces.extend(pair_final.get("traces", []))
+
+                # Graph-Level Synthesis Verdict via Value Clustering
+                clusters = cluster_claims_by_value(candidates)
+                num_clusters = len(clusters)
+                unique_docs = {c.document_id for c in candidates if c.document_id}
+
+                if num_clusters == 1:
+                    verdict_str = "CORROBORATED"
+                    strength_str = "HIGH"
+                    c_sample = candidates[0]
+                    reasoning = (
+                        f"Unanimous corroboration across {len(candidates)} claims "
+                        f"({c_sample.normalized_value} {c_sample.normalized_unit}) "
+                        f"across {len(unique_docs)} distinct document sources."
+                    )
+                elif num_clusters >= 2:
+                    has_conflict = any(r.relationship_type == "CONFLICTS_WITH" for r in relationships_to_insert)
+                    has_reconcile = any(r.relationship_type == "RECONCILES_WITH" for r in relationships_to_insert)
+
+                    if has_reconcile and not has_conflict:
+                        verdict_str = "RECONCILED"
+                        strength_str = "HIGH"
+                        reasoning = f"Contextually reconciled {num_clusters} claim value clusters via structural disclosure differences."
+                    elif has_conflict:
+                        verdict_str = "CONTRADICTION"
+                        strength_str = "HIGH"
+                        cluster_desc = ", ".join([f"{cl['canonical_value']} {cl['unit']} ({len(cl['members'])} sources)" for cl in clusters])
+                        reasoning = f"Conflicting claim clusters identified: [{cluster_desc}]. Direct numerical variance without reconciling disclosure."
+                    else:
+                        verdict_str = "UNRESOLVED"
+                        strength_str = "INSUFFICIENT"
+                        reasoning = f"Evaluated {num_clusters} claim clusters with inconclusive evidence relationships."
+
             decision_id = f"DEC-{uuid.uuid4().hex[:8]}"
 
             # Persist to SQLite ledger
             with self.ledger.transaction() as conn:
+                # 0. Claim Relationships
+                if relationships_to_insert:
+                    self.ledger.insert_claim_relationships(relationships_to_insert)
+
                 # 1. Hypotheses
-                for h in final_state.get("hypotheses", []):
+                for h in collected_hypotheses:
                     h_type_str = str(h.get("explanation_type", "ERRONEOUS_CONTRADICTION"))
                     if "." in h_type_str:
                         h_type_str = h_type_str.split(".")[-1]
@@ -125,7 +251,7 @@ class FactDecisionEngine:
                     self.ledger.insert_hypothesis(hyp_rec)
 
                 # 2. Validator Results
-                for v in final_state.get("validator_results", []):
+                for v in collected_validators:
                     outcome_str = str(v.get("outcome", "INCONCLUSIVE"))
                     if "." in outcome_str:
                         outcome_str = outcome_str.split(".")[-1]
@@ -149,7 +275,7 @@ class FactDecisionEngine:
                 self.ledger.record_decision(dec_rec)
 
                 # 4. Decision Traces
-                for t in final_state.get("traces", []):
+                for t in collected_traces:
                     trace_rec = DecisionTraceRecord(
                         trace_id=f"TRC-DEC-{uuid.uuid4().hex[:8]}",
                         decision_id=decision_id,

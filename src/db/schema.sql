@@ -89,12 +89,39 @@ CREATE TABLE IF NOT EXISTS fact_candidates (
 
 CREATE INDEX IF NOT EXISTS idx_facts_period ON fact_candidates(period_start, period_end);
 
+-- Additive Table: Fact Identity Signatures
+CREATE TABLE IF NOT EXISTS fact_identities (
+    identity_id TEXT PRIMARY KEY,
+    fact_id TEXT NOT NULL UNIQUE,
+    entity_canonical TEXT NOT NULL,
+    metric_family TEXT NOT NULL,
+    metric_subtype TEXT NOT NULL,
+    measurement_type TEXT NOT NULL CHECK(measurement_type IN ('ABSOLUTE_VALUE', 'PERCENTAGE', 'RATE_OF_CHANGE', 'RATIO', 'UNKNOWN')),
+    surface_metric TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    scope TEXT DEFAULT 'UNKNOWN',
+    basis TEXT DEFAULT 'UNKNOWN',
+    definition TEXT DEFAULT '',
+    geography TEXT DEFAULT '',
+    source_type TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(fact_id) REFERENCES fact_candidates(fact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_identities_entity_metric ON fact_identities(entity_canonical, metric_family, metric_subtype);
+CREATE INDEX IF NOT EXISTS idx_identities_period ON fact_identities(period_start, period_end);
+
 CREATE TABLE IF NOT EXISTS fact_groups (
     group_id TEXT PRIMARY KEY,
     entity TEXT NOT NULL,
     attribute TEXT NOT NULL,
     period_id TEXT NOT NULL,
     member_count INTEGER NOT NULL DEFAULT 0,
+    metric_family TEXT DEFAULT '',
+    metric_subtype TEXT DEFAULT '',
+    measurement_type TEXT DEFAULT 'UNKNOWN',
+    group_type TEXT DEFAULT 'DIRECT_COMPARISON',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -105,6 +132,24 @@ CREATE TABLE IF NOT EXISTS group_members (
     FOREIGN KEY(group_id) REFERENCES fact_groups(group_id) ON DELETE CASCADE,
     FOREIGN KEY(fact_id) REFERENCES fact_candidates(fact_id) ON DELETE CASCADE
 );
+
+-- Additive Table: Claim Relationship Graph Edges
+CREATE TABLE IF NOT EXISTS claim_relationships (
+    relationship_id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    source_fact_id TEXT NOT NULL,
+    target_fact_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL CHECK(relationship_type IN ('CORROBORATES', 'CONFLICTS_WITH', 'RECONCILES_WITH', 'INCONCLUSIVE')),
+    variance_percentage REAL DEFAULT 0.0,
+    bridge_explanation TEXT DEFAULT '',
+    details_json TEXT DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(group_id) REFERENCES fact_groups(group_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_fact_id) REFERENCES fact_candidates(fact_id) ON DELETE CASCADE,
+    FOREIGN KEY(target_fact_id) REFERENCES fact_candidates(fact_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_claim_rel_group ON claim_relationships(group_id);
 
 -- ============================================================================
 -- 3. DECISION ENGINE LAYER (Reasoning, Hypotheses & Verdicts)
