@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from decimal import Decimal
 from enum import Enum
@@ -43,6 +43,32 @@ class SkepticStatus(str, Enum):
     SURVIVED = "SURVIVED"
     FALSIFIED = "FALSIFIED"
     UNGROUNDED = "UNGROUNDED"
+
+
+class SufficiencyStatus(str, Enum):
+    """Categorical evaluation of evidentiary readiness for decision tournament."""
+    SUFFICIENT_FOR_ADJUDICATION = "SUFFICIENT_FOR_ADJUDICATION"
+    SINGLE_SOURCE_PENDING = "SINGLE_SOURCE_PENDING"
+    INSUFFICIENT_IDENTITY = "INSUFFICIENT_IDENTITY"
+    UNVERIFIED_EVIDENCE = "UNVERIFIED_EVIDENCE"
+    CONTEXT_DIVERGENT = "CONTEXT_DIVERGENT"
+
+
+class SufficiencyAction(str, Enum):
+    """Deterministic routing action emitted by the sufficiency gate."""
+    ADJUDICATE = "ADJUDICATE"
+    DEFER = "DEFER"
+    SKIP = "SKIP"
+    RECONCILE_CONTEXT = "RECONCILE_CONTEXT"
+
+
+class EvidenceSufficiencyResult(BaseModel):
+    """Structured outcome of evidence sufficiency evaluation."""
+    status: SufficiencyStatus
+    action: SufficiencyAction
+    reason: str
+    missing_dimensions: list[str] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class CandidateFactView(BaseModel):

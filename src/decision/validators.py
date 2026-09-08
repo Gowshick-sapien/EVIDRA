@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 import uuid
@@ -187,6 +187,10 @@ class ScopeValidator:
         )
 
 
+# pyrefly: ignore [missing-import]
+from src.matching.temporal import TemporalComparabilityClassifier, TemporalRelation
+
+
 class TimingValidator:
     """Validator testing whether variance is explained by divergent temporal intervals."""
 
@@ -200,9 +204,24 @@ class TimingValidator:
         p1 = (c1.period_start, c1.period_end)
         p2 = (c2.period_start, c2.period_end)
 
-        timing_mismatch = (p1 != p2) and (p1 != ("1970-01-01", "1970-01-01")) and (p2 != ("1970-01-01", "1970-01-01"))
+        relation, action = TemporalComparabilityClassifier.classify(
+            c1.period_start, c1.period_end, c2.period_start, c2.period_end
+        )
 
-        outcome = ValidationStatus.SUPPORTED if timing_mismatch else ValidationStatus.INCONCLUSIVE
+        if relation in (
+            TemporalRelation.CONTAINMENT,
+            TemporalRelation.ADJACENT,
+            TemporalRelation.OVERLAPPING,
+            TemporalRelation.NON_OVERLAPPING,
+        ):
+            outcome = ValidationStatus.SUPPORTED
+            timing_mismatch = True
+        elif relation == TemporalRelation.EXACT:
+            outcome = ValidationStatus.INCONCLUSIVE
+            timing_mismatch = False
+        else:
+            timing_mismatch = (p1 != p2) and (p1 != ("1970-01-01", "1970-01-01")) and (p2 != ("1970-01-01", "1970-01-01"))
+            outcome = ValidationStatus.SUPPORTED if timing_mismatch else ValidationStatus.INCONCLUSIVE
 
         return ValidatorOutcome(
             result_id=f"VAL-{uuid.uuid4().hex[:8]}",
@@ -212,6 +231,8 @@ class TimingValidator:
             details={
                 "period_1": f"{p1[0]} to {p1[1]}",
                 "period_2": f"{p2[0]} to {p2[1]}",
+                "temporal_relation": str(relation.value if hasattr(relation, "value") else relation),
+                "comparability_action": str(action.value if hasattr(action, "value") else action),
                 "intervals_differ": timing_mismatch,
             },
         )

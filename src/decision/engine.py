@@ -18,7 +18,9 @@ from src.db.ledger import (
     ValidatorResultRecord,
 )
 # pyrefly: ignore [missing-import]
-from src.decision.schemas import CandidateFactView, FactDecisionState
+from src.decision.schemas import CandidateFactView, FactDecisionState, SufficiencyAction
+# pyrefly: ignore [missing-import]
+from src.decision.sufficiency import EvidenceSufficiencyGate
 # pyrefly: ignore [missing-import]
 from src.decision.workflow import DecisionWorkflowBuilder
 # pyrefly: ignore [missing-import]
@@ -116,18 +118,17 @@ class FactDecisionEngine:
             collected_traces: list[dict[str, Any]] = []
             relationships_to_insert: list[ClaimRelationshipRecord] = []
 
-            if len(candidates) == 0:
+            # Evaluate evidence sufficiency via transparent categorical rule gate
+            sufficiency = EvidenceSufficiencyGate.evaluate(candidates, group_metadata=g)
+
+            if sufficiency.action == SufficiencyAction.SKIP:
                 verdict_str = "UNRESOLVED"
                 strength_str = "INSUFFICIENT"
-                reasoning = "No candidate facts found for group."
-            elif len(candidates) == 1:
-                c_single = candidates[0]
+                reasoning = sufficiency.reason
+            elif sufficiency.action == SufficiencyAction.DEFER:
                 verdict_str = "UNRESOLVED"
                 strength_str = "LOW"
-                reasoning = (
-                    f"Single source claim ({c_single.normalized_value} {c_single.normalized_unit}) "
-                    "pending second-source corroboration."
-                )
+                reasoning = sufficiency.reason
             else:
                 # Multi-member / pairwise tournament execution
                 pairs: list[tuple[CandidateFactView, CandidateFactView]] = []
