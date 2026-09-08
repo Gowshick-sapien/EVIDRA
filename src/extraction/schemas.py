@@ -61,6 +61,65 @@ class EvidenceChunk(BaseModel):
         )
 
 
+class EvidenceWindow(BaseModel):
+    """A context-enriched envelope wrapping an EvidenceChunk with structural layout surroundings."""
+    window_id: str = Field(description="Deterministic identifier: WIN-{chunk_id[4:]}")
+    chunk_id: str = Field(description="Foreign key referencing evidence_chunks")
+    document_id: str = Field(description="Parent document identifier")
+    page_number: int = Field(description="1-indexed page number")
+    chunk_type: Literal["text", "table", "figure"] = Field(description="Structural modality")
+    bounding_box: list[float] = Field(description="[x0, y0, x1, y1] coordinates")
+    content: str = Field(description="Raw text or formatted Markdown representation")
+    content_hash: str = Field(description="SHA-256 hash of content string")
+
+    # Inherited context with confidence
+    section_title: str = Field(default="", description="Parent section heading")
+    section_confidence: float = Field(default=0.0, description="Confidence in section classification [0.0, 1.0]")
+    table_caption: str = Field(default="", description="Table caption or preceding title")
+    stated_unit: str = Field(default="", description="Inherited financial unit (e.g., crore, lakhs, millions)")
+    stated_currency: str = Field(default="", description="Inherited currency (e.g., INR, USD)")
+    column_headers: list[str] = Field(default_factory=list, description="Table column headers if chunk is table")
+    row_context: str = Field(default="", description="Table row label or preceding narrative context")
+    page_header: str = Field(default="", description="Repeating page header")
+    footnotes: list[str] = Field(default_factory=list, description="Footnotes detected below table")
+
+    @classmethod
+    def from_chunk(
+        cls,
+        chunk: EvidenceChunk,
+        section_title: str = "",
+        section_confidence: float = 0.0,
+        table_caption: str = "",
+        stated_unit: str = "",
+        stated_currency: str = "",
+        column_headers: list[str] | None = None,
+        row_context: str = "",
+        page_header: str = "",
+        footnotes: list[str] | None = None,
+    ) -> EvidenceWindow:
+        """Create an EvidenceWindow wrapping an EvidenceChunk."""
+        window_id = f"WIN-{chunk.chunk_id[4:] if chunk.chunk_id.startswith('CHK-') else chunk.chunk_id}"
+        return cls(
+            window_id=window_id,
+            chunk_id=chunk.chunk_id,
+            document_id=chunk.document_id,
+            page_number=chunk.page_number,
+            chunk_type=chunk.chunk_type,
+            bounding_box=chunk.bounding_box,
+            content=chunk.content,
+            content_hash=chunk.content_hash,
+            section_title=section_title,
+            section_confidence=section_confidence,
+            table_caption=table_caption,
+            stated_unit=stated_unit,
+            stated_currency=stated_currency,
+            column_headers=column_headers or [],
+            row_context=row_context,
+            page_header=page_header,
+            footnotes=footnotes or [],
+        )
+
+
 class NumericalObservation(BaseModel):
     """An explicit financial metric extracted verbatim from text or a table."""
     statement: str = Field(description="Exact statement or row summary containing the claim")

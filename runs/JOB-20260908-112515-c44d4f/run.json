@@ -1,0 +1,24 @@
+{
+  "job_id": "JOB-20260908-112515-c44d4f",
+  "status": "COMPLETED",
+  "created_at": "2026-09-08T11:25:15.759720+00:00",
+  "completed_at": "2026-09-08T11:45:54.689361+00:00",
+  "input_files": [
+    "01-delhivery-prospectus-2022-excerpt.pdf"
+  ],
+  "summary": {
+    "documents_count": 1,
+    "evidence_chunks_count": 1760,
+    "observations_count": 57,
+    "fact_candidates_count": 56,
+    "fact_groups_count": 37,
+    "decisions_count": 37,
+    "verdicts": {
+      "CORROBORATED": 1,
+      "CONTRADICTION": 7,
+      "RECONCILED": 1,
+      "UNRESOLVED": 28
+    }
+  },
+  "errors": []
+}

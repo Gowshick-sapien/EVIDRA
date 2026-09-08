@@ -1,4 +1,4 @@
-﻿import tempfile
+import tempfile
 from pathlib import Path
 import pytest
 import pymupdf as fitz
@@ -87,7 +87,13 @@ def test_extraction_agent_with_mock():
     """Verify ExtractionAgent formats prompt and handles ObservationBundle."""
     mock_llm = MockReasoningService()
     agent = ExtractionAgent(mock_llm)
-    chunk = EvidenceChunk.create("DOC-01", 1, "text", [10, 20, 30, 40], "Some financial disclosure")
+    chunk = EvidenceChunk.create(
+        "DOC-01",
+        1,
+        "text",
+        [10, 20, 30, 40],
+        "Delhivery reported Revenue from operations of INR 6,882.29 million for FY22.",
+    )
 
     bundle = agent.extract_from_chunk(chunk)
     assert len(bundle.numerical_observations) == 1

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Evidence Ledger persistence layer for EVIDRA.
 Provides a thread-safe SQLite-backed system of record for all evidence,
 observations, fact candidates, hypotheses, decisions, and audit traces.
@@ -32,6 +32,24 @@ class EvidenceChunkRecord:
     bounding_box: list[float] | tuple[float, float, float, float]
     content: str
     content_hash: str
+    created_at: Optional[str] = None
+
+
+@dataclass
+class EvidenceWindowRecord:
+    window_id: str
+    chunk_id: str
+    document_id: str
+    page_number: int
+    section_title: str = ""
+    section_confidence: float = 0.0
+    table_caption: str = ""
+    stated_unit: str = ""
+    stated_currency: str = ""
+    column_headers: str = "[]"
+    row_context: str = ""
+    page_header: str = ""
+    footnotes: str = "[]"
     created_at: Optional[str] = None
 
 
@@ -194,6 +212,100 @@ class EvidenceLedger:
             conn.executemany(query, rows)
         return len(chunks)
 
+    def insert_evidence_windows(self, windows: list[EvidenceWindowRecord]) -> int:
+        """Bulk insert or replace evidence window records."""
+        if not windows:
+            return 0
+        query = """
+            INSERT INTO evidence_windows (
+                window_id, chunk_id, document_id, page_number,
+                section_title, section_confidence, table_caption,
+                stated_unit, stated_currency, column_headers,
+                row_context, page_header, footnotes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(chunk_id) DO UPDATE SET
+                section_title=excluded.section_title,
+                section_confidence=excluded.section_confidence,
+                table_caption=excluded.table_caption,
+                stated_unit=excluded.stated_unit,
+                stated_currency=excluded.stated_currency,
+                column_headers=excluded.column_headers,
+                row_context=excluded.row_context,
+                page_header=excluded.page_header,
+                footnotes=excluded.footnotes
+        """
+        rows = [
+            (
+                w.window_id,
+                w.chunk_id,
+                w.document_id,
+                w.page_number,
+                w.section_title,
+                w.section_confidence,
+                w.table_caption,
+                w.stated_unit,
+                w.stated_currency,
+                w.column_headers if isinstance(w.column_headers, str) else json.dumps(w.column_headers),
+                w.row_context,
+                w.page_header,
+                w.footnotes if isinstance(w.footnotes, str) else json.dumps(w.footnotes),
+            )
+            for w in windows
+        ]
+        with self.transaction() as conn:
+            conn.executemany(query, rows)
+        return len(windows)
+
+    def get_evidence_window(self, chunk_id: str) -> Optional[EvidenceWindowRecord]:
+        """Retrieve a specific EvidenceWindowRecord by chunk_id."""
+        query = "SELECT * FROM evidence_windows WHERE chunk_id = ?"
+        with self.transaction() as conn:
+            row = conn.execute(query, (chunk_id,)).fetchone()
+            if not row:
+                return None
+            return EvidenceWindowRecord(
+                window_id=row["window_id"],
+                chunk_id=row["chunk_id"],
+                document_id=row["document_id"],
+                page_number=row["page_number"],
+                section_title=row["section_title"] or "",
+                section_confidence=float(row["section_confidence"] or 0.0),
+                table_caption=row["table_caption"] or "",
+                stated_unit=row["stated_unit"] or "",
+                stated_currency=row["stated_currency"] or "",
+                column_headers=row["column_headers"] or "[]",
+                row_context=row["row_context"] or "",
+                page_header=row["page_header"] or "",
+                footnotes=row["footnotes"] or "[]",
+                created_at=row["created_at"],
+            )
+
+    def get_windows_for_document(self, document_id: str) -> list[EvidenceWindowRecord]:
+        """Retrieve all evidence windows for a given document."""
+        query = "SELECT * FROM evidence_windows WHERE document_id = ? ORDER BY page_number ASC"
+        with self.transaction() as conn:
+            rows = conn.execute(query, (document_id,)).fetchall()
+            return [
+                EvidenceWindowRecord(
+                    window_id=r["window_id"],
+                    chunk_id=r["chunk_id"],
+                    document_id=r["document_id"],
+                    page_number=r["page_number"],
+                    section_title=r["section_title"] or "",
+                    section_confidence=float(r["section_confidence"] or 0.0),
+                    table_caption=r["table_caption"] or "",
+                    stated_unit=r["stated_unit"] or "",
+                    stated_currency=r["stated_currency"] or "",
+                    column_headers=r["column_headers"] or "[]",
+                    row_context=r["row_context"] or "",
+                    page_header=r["page_header"] or "",
+                    footnotes=r["footnotes"] or "[]",
+                    created_at=r["created_at"],
+                )
+                for r in rows
+            ]
+
     def insert_observations(self, observations: list[ObservationRecord]) -> int:
         """Bulk insert observation records."""
         if not observations:
@@ -224,6 +336,29 @@ class EvidenceLedger:
         with self.transaction() as conn:
             conn.executemany(query, rows)
         return len(observations)
+
+    def get_observations_for_document(self, document_id: str) -> list[ObservationRecord]:
+        """Retrieve all observations extracted for a given document."""
+        query = "SELECT * FROM observations WHERE document_id = ? ORDER BY created_at ASC"
+        with self.transaction() as conn:
+            rows = conn.execute(query, (document_id,)).fetchall()
+            return [
+                ObservationRecord(
+                    observation_id=r["observation_id"],
+                    chunk_id=r["chunk_id"],
+                    document_id=r["document_id"],
+                    statement=r["statement"],
+                    entity=r["entity"],
+                    attribute=r["attribute"],
+                    raw_value=r["raw_value"],
+                    observation_type=r["observation_type"],
+                    temporal_scope=r["temporal_scope"],
+                    provenance_status=r["provenance_status"],
+                    confidence=float(r["confidence"] or 1.0),
+                    created_at=r["created_at"],
+                )
+                for r in rows
+            ]
 
     def insert_fact_candidates(self, facts: list[FactCandidateRecord]) -> int:
         """Bulk insert normalized fact candidate records."""

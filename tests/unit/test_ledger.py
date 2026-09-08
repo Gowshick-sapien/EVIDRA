@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for the SQLite EvidenceLedger persistence engine.
 Validates all CRUD operations, foreign key cascades, and transactional integrity.
 """
@@ -12,6 +12,7 @@ import pytest
 from src.db.ledger import (
     DocumentRecord,
     EvidenceChunkRecord,
+    EvidenceWindowRecord,
     ObservationRecord,
     FactCandidateRecord,
     HypothesisRecord,
@@ -31,7 +32,7 @@ def temp_ledger():
 
 
 def test_schema_initialization(temp_ledger):
-    """Verify that all 10 tables are created during initialization."""
+    """Verify that all tables are created during initialization."""
     with temp_ledger.transaction() as conn:
         cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = {row[0] for row in cursor.fetchall()}
@@ -39,6 +40,7 @@ def test_schema_initialization(temp_ledger):
     expected_tables = {
         "documents",
         "evidence_chunks",
+        "evidence_windows",
         "observations",
         "fact_candidates",
         "fact_groups",
@@ -134,6 +136,10 @@ def test_evidence_chunks_and_observations(temp_ledger):
     obs_count = temp_ledger.insert_observations(observations)
     assert obs_count == 1
 
+    retrieved_obs = temp_ledger.get_observations_for_document("DOC-100")
+    assert len(retrieved_obs) == 1
+    assert retrieved_obs[0].statement == "Revenue reached $100M in FY2024"
+
 
 def test_fact_grouping_and_decision_card(temp_ledger):
     """Verify the full relationship lifecycle: facts -> group -> hypotheses -> decision -> trace."""
@@ -226,3 +232,69 @@ def test_transaction_rollback(temp_ledger):
     # Confirm that nothing was inserted
     summary = temp_ledger.get_job_summary()
     assert summary["observations_count"] == 0
+
+
+def test_evidence_windows_crud(temp_ledger):
+    """Verify insertion, conflict update, and retrieval of evidence windows."""
+    doc = DocumentRecord("DOC-WIN", "Report.pdf", "hash_win", 5)
+    temp_ledger.insert_document(doc)
+
+    chunk = EvidenceChunkRecord(
+        chunk_id="CHK-WIN001",
+        document_id="DOC-WIN",
+        page_number=1,
+        chunk_type="table",
+        bounding_box=[10.0, 20.0, 100.0, 200.0],
+        content="| Revenue | 500 |",
+        content_hash="hash_c1",
+    )
+    temp_ledger.insert_evidence_chunks([chunk])
+
+    win = EvidenceWindowRecord(
+        window_id="WIN-001",
+        chunk_id="CHK-WIN001",
+        document_id="DOC-WIN",
+        page_number=1,
+        section_title="Financial Summary",
+        section_confidence=0.88,
+        table_caption="Table 1: Revenue",
+        stated_unit="crore",
+        stated_currency="INR",
+        column_headers='["Metric", "Value"]',
+        row_context="Revenue",
+        page_header="Annual Report 2024",
+        footnotes='["1. Audited figures"]',
+    )
+    count = temp_ledger.insert_evidence_windows([win])
+    assert count == 1
+
+    # Retrieve by chunk_id
+    retrieved = temp_ledger.get_evidence_window("CHK-WIN001")
+    assert retrieved is not None
+    assert retrieved.window_id == "WIN-001"
+    assert retrieved.section_title == "Financial Summary"
+    assert retrieved.section_confidence == 0.88
+    assert retrieved.stated_unit == "crore"
+
+    # Retrieve by document_id
+    doc_windows = temp_ledger.get_windows_for_document("DOC-WIN")
+    assert len(doc_windows) == 1
+    assert doc_windows[0].chunk_id == "CHK-WIN001"
+
+    # Test conflict update
+    win_updated = EvidenceWindowRecord(
+        window_id="WIN-001",
+        chunk_id="CHK-WIN001",
+        document_id="DOC-WIN",
+        page_number=1,
+        section_title="Updated Section",
+        section_confidence=0.95,
+        table_caption="Updated Caption",
+        stated_unit="lakh",
+        stated_currency="INR",
+    )
+    temp_ledger.insert_evidence_windows([win_updated])
+    retrieved2 = temp_ledger.get_evidence_window("CHK-WIN001")
+    assert retrieved2.section_title == "Updated Section"
+    assert retrieved2.section_confidence == 0.95
+    assert retrieved2.stated_unit == "lakh"

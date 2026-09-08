@@ -1,4 +1,4 @@
-﻿-- Pragmas for performance, concurrency, and data integrity
+-- Pragmas for performance, concurrency, and data integrity
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
@@ -28,6 +28,29 @@ CREATE TABLE IF NOT EXISTS evidence_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_page ON evidence_chunks(document_id, page_number);
+
+-- Context-Enriched Evidence Windows
+CREATE TABLE IF NOT EXISTS evidence_windows (
+    window_id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL UNIQUE,
+    document_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL,
+    section_title TEXT DEFAULT '',
+    section_confidence REAL DEFAULT 0.0,
+    table_caption TEXT DEFAULT '',
+    stated_unit TEXT DEFAULT '',
+    stated_currency TEXT DEFAULT '',
+    column_headers TEXT DEFAULT '[]',   -- JSON array of column strings
+    row_context TEXT DEFAULT '',
+    page_header TEXT DEFAULT '',
+    footnotes TEXT DEFAULT '[]',        -- JSON array of footnote strings
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(chunk_id) REFERENCES evidence_chunks(chunk_id) ON DELETE CASCADE,
+    FOREIGN KEY(document_id) REFERENCES documents(document_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_windows_doc ON evidence_windows(document_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_windows_chunk ON evidence_windows(chunk_id);
 
 -- ============================================================================
 -- 2. FACT CONSTRUCTION LAYER (Claims & Normalization)
