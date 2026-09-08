@@ -11,6 +11,10 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q"
+addopts = "-ra -q --disable-warnings"
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

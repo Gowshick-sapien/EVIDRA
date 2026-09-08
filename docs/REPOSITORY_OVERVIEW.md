@@ -26,6 +26,7 @@ EVIDRA/
     ├── REPOSITORY_OVERVIEW.md          # This document: navigation guide and inspection directory
     ├── PROPOSED_SOLUTION.md            # Comprehensive solution blueprint and evaluation guide
     ├── RUN_PLAN.md                     # Operational verification runbook (CLI, API, test procedures)
+    ├── PRESENTATION_PLAN_3MIN.md       # 3-minute video presentation guide, script, and staging checklist
     ├── deliverable_plans/              # Granular phase implementation and verification records
     │   ├── P0_IMPLEMENTATION_PLAN.md   # Phase P0: Evidence extraction and geometry
     │   ├── P0_TESTING_AND_VERIFICATION_PLAN.md
@@ -54,6 +55,7 @@ EVIDRA/
 | **[docs/REPOSITORY_OVERVIEW.md](file:///d:/projects/superjoin/EVIDRA/docs/REPOSITORY_OVERVIEW.md)** | Evaluators, Auditors | Comprehensive directory mapping: what each document conveys, where to check source modules, and where to inspect manual verification artifacts. |
 | **[docs/PROPOSED_SOLUTION.md](file:///d:/projects/superjoin/EVIDRA/docs/PROPOSED_SOLUTION.md)** | Evaluators, Architects | The solution blueprint: contrasts conventional RAG failures with EVIDRA's 6 pillars, describes the 4-stage pipeline, and walks through 4 real corporate case studies. |
 | **[docs/RUN_PLAN.md](file:///d:/projects/superjoin/EVIDRA/docs/RUN_PLAN.md)** | Evaluators, Operators | Step-by-step operational runbook: pre-flight diagnostics, CLI options, interactive FastAPI server, 110 automated tests, and SQLite audit queries. |
+| **[docs/PRESENTATION_PLAN_3MIN.md](file:///d:/projects/superjoin/EVIDRA/docs/PRESENTATION_PLAN_3MIN.md)** | Presenters, Evaluators | Complete 3-minute video presentation plan, word-for-word spoken script (~400 words), on-screen cues, and pre-recording staging checklist. |
 
 ### 2.2 Phase Implementation and Verification Plans (`docs/deliverable_plans/`)
 

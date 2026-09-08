@@ -1,0 +1,28 @@
+{
+  "document_id": "DOC-001",
+  "filename": "01-delhivery-prospectus-2022-excerpt.pdf",
+  "page_count": 100,
+  "primary_entity": "Unknown Entity",
+  "total_chunks": 1760,
+  "total_windows": 1760,
+  "table_chunks_count": 197,
+  "text_chunks_count": 1563,
+  "candidate_windows_count": 15,
+  "candidate_window_ids": [
+    "WIN-5fc7319b",
+    "WIN-033f9d6d",
+    "WIN-66d4becc",
+    "WIN-a944841c",
+    "WIN-58597dce",
+    "WIN-5acfa963",
+    "WIN-48582905",
+    "WIN-547691bd",
+    "WIN-17be2345",
+    "WIN-2da3fcc2",
+    "WIN-aab7d930",
+    "WIN-f1d0d2a4",
+    "WIN-23c29ec5",
+    "WIN-68761258",
+    "WIN-a2658061"
+  ]
+}
