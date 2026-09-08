@@ -1,16 +1,17 @@
-# EVIDRA: System Execution and Evaluation Run Plan
+# EVIDRA 2.0: System Execution and Evaluation Run Plan
 
 ## Operational Verification Runbook for Evaluators, Auditors, and Technical Reviewers
 
-> **System Version:** EVIDRA  
-> **Target Audience:** Technical Evaluators, System Auditors, Operational Reviewers  
+> **System Version:** EVIDRA 2.0  
+> **Development Branch:** `dev_v2`  
+> **Target Audience:** Technical Evaluators, System Auditors, Academic Examiners  
 > **Compliance:** Zero-LLM Deterministic Verdict Gate, SQLite WAL Audit Ledger, Zero Emojis  
 
 ---
 
 ## 1. Executive Overview and Objective
 
-This runbook provides complete, reproducible operational instructions for executing, evaluating, and auditing the **EVIDRA** Fact Knowledge Layer.
+This runbook provides complete, reproducible operational instructions for executing, evaluating, and auditing the **EVIDRA 2.0** Fact Knowledge Layer.
 
 EVIDRA evaluates financial disclosures across corporate filings (Prospectuses, Annual Reports, Earnings Presentations, Press Releases) to adjudicate whether numerical claims:
 1. **CORROBORATED:** Independently match across disparate sources within 0.01% arithmetic tolerance.
@@ -23,7 +24,7 @@ This document details:
 - Command Line Interface (CLI) execution and multi-document processing options.
 - Interactive FastAPI REST API server operation and Swagger UI inspection.
 - Complete verification procedures:
-  - Full automated regression suite (110 passing tests).
+  - Full automated regression suite (100 passing tests).
   - SQLite WAL evidence ledger verification (`ledger.db`).
   - Cryptographic timeline replaying (`trace.jsonl`).
   - Human-readable markdown audit reports (`summary.md`, `contradictions.md`, `unresolved.md`).
@@ -33,7 +34,7 @@ This document details:
 
 ## 2. Environment Preparation and Prerequisites
 
-EVIDRA executes on local infrastructure without external cloud API dependencies or recurring service costs.
+EVIDRA 2.0 executes on local infrastructure without external cloud API dependencies or recurring service costs.
 
 ### 2.1 Hardware and Software Requirements
 - **Operating System:** Windows 10/11, macOS, or Linux (x86_64 or ARM64).
@@ -150,7 +151,7 @@ http://127.0.0.1:8000/docs
 ```
 
 #### Step 3: Upload Files via Swagger UI
-1. Navigate to the `POST /jobs` endpoint (`Create Job`).
+1. Navigate to the `POST /api/v1/jobs` endpoint (`Create Job`).
 2. Click **Try it out**.
 3. Under the `files` field, upload files from disk (select one or multiple PDFs from `sample_docs/`).
 4. Click **Execute**.
@@ -170,7 +171,7 @@ http://127.0.0.1:8000/docs
 
 #### Step 4: Upload Files via cURL
 ```powershell
-curl -X POST "http://127.0.0.1:8000/jobs" `
+curl -X POST "http://127.0.0.1:8000/api/v1/jobs" `
   -H "accept: application/json" `
   -H "Content-Type: multipart/form-data" `
   -F "files=@sample_docs/01-delhivery-prospectus-2022-excerpt.pdf" `
@@ -210,38 +211,37 @@ runs/JOB-20260908-123217-9b5337/
 
 Evaluators can verify EVIDRA through five independent inspection layers.
 
-### 5.1 Verification Layer 1: Automated Test Suite (110 Passing Tests)
+### 5.1 Verification Layer 1: Automated Test Suite (100 Passing Tests)
 
 Execute the full automated test suite covering unit tests, API contracts, and evaluation scenarios:
 ```powershell
 pytest tests/ -v
 ```
 
-Expected summary (100% Passing in ~60s):
+Expected summary (100% Passing in ~68s):
 ```text
-tests\contracts\test_api.py .......                                      [  6%]
-tests\evaluation\test_scenarios.py .....                                 [ 10%]
-tests\unit\test_4gate_resolution.py ......                               [ 16%]
-tests\unit\test_claim_graph.py ....                                      [ 20%]
-tests\unit\test_cli.py ......                                            [ 25%]
-tests\unit\test_decimal_units.py .....                                   [ 30%]
-tests\unit\test_decision.py ...........                                  [ 40%]
-tests\unit\test_extraction.py ...                                        [ 42%]
-tests\unit\test_identity.py .......                                      [ 49%]
-tests\unit\test_ledger.py .......                                        [ 55%]
-tests\unit\test_llm.py ..                                                [ 57%]
-tests\unit\test_p0_pipeline.py .....                                     [ 61%]
-tests\unit\test_p2_pipeline.py ..........                                [ 70%]
-tests\unit\test_pdf.py ...                                               [ 73%]
-tests\unit\test_schema_induction.py ...                                  [ 76%]
-tests\unit\test_temporal_comparability.py ........                       [ 83%]
-tests\unit\test_temporal_parsing.py .....                                [ 88%]
+tests\contracts\test_api.py .......                                      [  7%]
+tests\evaluation\test_scenarios.py .....                                 [ 12%]
+tests\unit\test_4gate_resolution.py ......                               [ 18%]
+tests\unit\test_claim_graph.py ....                                      [ 22%]
+tests\unit\test_cli.py ......                                            [ 28%]
+tests\unit\test_decimal_units.py .....                                   [ 33%]
+tests\unit\test_decision.py ...........                                  [ 44%]
+tests\unit\test_extraction.py ...                                        [ 47%]
+tests\unit\test_identity.py .......                                      [ 54%]
+tests\unit\test_ledger.py .......                                        [ 61%]
+tests\unit\test_llm.py ..                                                [ 63%]
+tests\unit\test_p0_pipeline.py .....                                     [ 68%]
+tests\unit\test_pdf.py ...                                               [ 71%]
+tests\unit\test_schema_induction.py ...                                  [ 74%]
+tests\unit\test_temporal_comparability.py ........                       [ 82%]
+tests\unit\test_temporal_parsing.py .....                                [ 87%]
 tests\unit\test_topology.py ...                                          [ 90%]
 tests\unit\test_trace.py ..                                              [ 92%]
 tests\unit\test_verification.py .....                                    [ 97%]
 tests\unit\test_windows.py ...                                           [100%]
 
-================= 110 passed, 3 warnings in 61.24s (0:01:01) ==================
+================= 100 passed, 3 warnings in 68.31s (0:01:08) ==================
 ```
 
 ---
