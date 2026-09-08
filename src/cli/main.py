@@ -100,6 +100,7 @@ def handle_process(args: argparse.Namespace) -> int:
             tracer=tracer,
             max_llm_chunks=max_chunks,
             skip_verifier=getattr(args, "fast", False),
+            evidence_dir=ctx.evidence_dir,
         )
         pipeline.process_document(doc_id, dest_path, defer_reasoning=True)
 

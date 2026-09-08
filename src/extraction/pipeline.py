@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -45,6 +46,7 @@ class ExtractionPipeline:
         reasoning_service: Optional[ReasoningService] = None,
         max_llm_chunks: Optional[int] = None,
         skip_verifier: bool = False,
+        evidence_dir: Optional[Path | str] = None,
     ):
         self.ledger = ledger
         self.tracer = tracer
@@ -53,6 +55,12 @@ class ExtractionPipeline:
         self.agent = ExtractionAgent(self.llm)
         self.max_llm_chunks = max_llm_chunks  # Guardrail for selective inference
         self.skip_verifier = skip_verifier
+        if evidence_dir:
+            self.evidence_dir = Path(evidence_dir)
+        elif hasattr(ledger, "db_path") and ledger.db_path:
+            self.evidence_dir = Path(ledger.db_path).parent / "evidence"
+        else:
+            self.evidence_dir = None
 
     @staticmethod
     def _is_extraction_candidate(block: ExtractedBlock) -> bool:
@@ -160,6 +168,52 @@ class ExtractionPipeline:
             # Prioritize chunks with highest financial keyword and numerical density
             candidate_pairs.sort(key=lambda pair: self._score_candidate(pair[0]), reverse=True)
             candidate_pairs = candidate_pairs[: self.max_llm_chunks]
+
+        # Export cached evidence artifacts if evidence_dir is configured
+        if self.evidence_dir:
+            try:
+                ev_dir = Path(self.evidence_dir)
+                tables_dir = ev_dir / "tables"
+                cands_dir = ev_dir / "candidates"
+                tables_dir.mkdir(parents=True, exist_ok=True)
+                cands_dir.mkdir(parents=True, exist_ok=True)
+
+                for chunk in evidence_chunks:
+                    if chunk.chunk_type == "table":
+                        tbl_file = tables_dir / f"{document_id}_p{chunk.page_number}_{chunk.chunk_id[:8]}.md"
+                        if not tbl_file.exists():
+                            with open(tbl_file, "w", encoding="utf-8") as f:
+                                f.write(f"# Extracted Table: {document_id} (Page {chunk.page_number})\n\n")
+                                f.write(f"- **Chunk ID:** `{chunk.chunk_id}`\n")
+                                f.write(f"- **Bounding Box:** `{chunk.bounding_box}`\n\n")
+                                f.write("## Table Content\n\n")
+                                f.write(chunk.content + "\n")
+
+                for chunk, _ in candidate_pairs:
+                    cand_file = cands_dir / f"{document_id}_p{chunk.page_number}_{chunk.chunk_id[:8]}.md"
+                    with open(cand_file, "w", encoding="utf-8") as f:
+                        f.write(f"# Candidate Evidence Chunk: {document_id} (Page {chunk.page_number})\n\n")
+                        f.write(f"- **Chunk ID:** `{chunk.chunk_id}`\n")
+                        f.write(f"- **Type:** `{chunk.chunk_type}`\n")
+                        f.write(f"- **Bounding Box:** `{chunk.bounding_box}`\n\n")
+                        f.write("## Raw Content\n\n")
+                        f.write(chunk.content + "\n")
+
+                manifest_file = ev_dir / f"{document_id}_manifest.json"
+                manifest = {
+                    "document_id": document_id,
+                    "filename": path.name,
+                    "page_count": max_page,
+                    "total_chunks": len(evidence_chunks),
+                    "table_chunks_count": sum(1 for c in evidence_chunks if c.chunk_type == "table"),
+                    "text_chunks_count": sum(1 for c in evidence_chunks if c.chunk_type == "text"),
+                    "candidate_chunks_count": len(candidate_pairs),
+                    "candidate_chunk_ids": [c.chunk_id for c, _ in candidate_pairs],
+                }
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to export evidence artifacts for {document_id}: {e}")
 
         # 4. Invoke extraction agents across candidates
         observations: list[ObservationRecord] = []

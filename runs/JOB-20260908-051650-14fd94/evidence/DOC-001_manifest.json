@@ -1,0 +1,15 @@
+{
+  "document_id": "DOC-001",
+  "filename": "01-delhivery-prospectus-2022-excerpt.pdf",
+  "page_count": 100,
+  "total_chunks": 1760,
+  "table_chunks_count": 197,
+  "text_chunks_count": 1563,
+  "candidate_chunks_count": 4,
+  "candidate_chunk_ids": [
+    "CHK-5fc7319b",
+    "CHK-a944841c",
+    "CHK-f1d0d2a4",
+    "CHK-033f9d6d"
+  ]
+}

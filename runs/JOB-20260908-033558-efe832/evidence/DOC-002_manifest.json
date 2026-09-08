@@ -1,0 +1,13 @@
+{
+  "document_id": "DOC-002",
+  "filename": "02-delhivery-annual-report-fy24-excerpt.pdf",
+  "page_count": 100,
+  "total_chunks": 4520,
+  "table_chunks_count": 96,
+  "text_chunks_count": 4424,
+  "candidate_chunks_count": 2,
+  "candidate_chunk_ids": [
+    "CHK-9d1044d3",
+    "CHK-8798b4a6"
+  ]
+}
