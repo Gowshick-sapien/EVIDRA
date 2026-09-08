@@ -181,6 +181,7 @@ Navigate to http://127.0.0.1:8000/docs in any browser to interactively upload do
 
 | Document | Purpose |
 |---|---|
+| [docs/RUN_PLAN.md](file:///d:/projects/superjoin/project/docs/RUN_PLAN.md) | Operational run plan, PDF upload instructions, and verification guide for evaluators. |
 | [docs/PROJECT_IDEATION.md](file:///d:/projects/superjoin/project/docs/PROJECT_IDEATION.md) | Original design philosophy, scope boundaries, and thesis statement. |
 | [docs/ARCHITECTURE.md](file:///d:/projects/superjoin/project/docs/ARCHITECTURE.md) | Comprehensive 4-layer system architecture and data topology specification. |
 | [docs/SRS.md](file:///d:/projects/superjoin/project/docs/SRS.md) | IEEE 830-aligned Software Requirements Specification and traceability matrix. |

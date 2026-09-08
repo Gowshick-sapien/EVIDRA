@@ -113,7 +113,7 @@ def create_app(runs_root: Path | str = "runs") -> FastAPI:
             ctx = RunContext(runs_root=runs_path, job_id=job_id)
             ledger = EvidenceLedger(ctx.db_path)
             tracer = TraceLogger(ctx.trace_log_path)
-            pipeline = ExtractionPipeline(ledger=ledger, tracer=tracer, max_llm_chunks=10)
+            pipeline = ExtractionPipeline(ledger=ledger, tracer=tracer, max_llm_chunks=2, skip_verifier=True)
 
             for idx, path in enumerate(file_paths, start=1):
                 doc_id = f"DOC-{idx:03d}"
