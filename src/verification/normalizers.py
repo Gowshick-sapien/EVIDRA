@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
 from decimal import Decimal, InvalidOperation
@@ -113,16 +113,19 @@ class DecimalNormalizer:
         combined_context = f"{text} {stated_unit}".lower()
         multiplier = Decimal("1")
         resolved_unit = "UNIT_BASE"
+        has_magnitude = False
 
-        if is_percent:
+        for word, factor in MAGNITUDE_MULTIPLIERS.items():
+            pattern = r"(?:\b|\d)" + re.escape(word) + r"\b"
+            if re.search(pattern, combined_context):
+                has_magnitude = True
+                multiplier = factor
+                resolved_unit = f"SCALED_{word.upper()}"
+                break
+
+        if is_percent and not has_magnitude:
             resolved_unit = "PERCENT"
-        else:
-            for word, factor in MAGNITUDE_MULTIPLIERS.items():
-                pattern = r"\b" + re.escape(word) + r"\b"
-                if re.search(pattern, combined_context):
-                    multiplier = factor
-                    resolved_unit = f"SCALED_{word.upper()}"
-                    break
+            multiplier = Decimal("1")
 
         scaled_dec = base_dec * multiplier
         return scaled_dec, resolved_unit

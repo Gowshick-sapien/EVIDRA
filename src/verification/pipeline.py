@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import time
@@ -45,7 +45,11 @@ class VerificationPipeline:
         self.group_engine = FactGroupEngine()
         self.skip_verifier = skip_verifier
 
-    def process_observations(self, document_id: Optional[str] = None) -> dict[str, Any]:
+    def process_observations(
+        self,
+        document_id: Optional[str] = None,
+        defer_grouping: bool = False,
+    ) -> dict[str, Any]:
         """Execute verification, normalization, and fact candidate grouping on ledger observations."""
         start_time = time.perf_counter()
 
@@ -56,6 +60,7 @@ class VerificationPipeline:
                 FROM observations o
                 LEFT JOIN evidence_chunks c ON o.chunk_id = c.chunk_id
                 WHERE o.provenance_status != 'HALLUCINATED'
+                  AND o.observation_id NOT IN (SELECT observation_id FROM fact_candidates)
             """
             params = []
             if document_id:
@@ -132,22 +137,8 @@ class VerificationPipeline:
             candidates_inserted = self.ledger.insert_fact_candidates(fact_records)
             logger.info(f"Persisted {candidates_inserted} fact candidates to ledger.")
 
-        # 3. Two-Tier Candidate Grouping & Blocking
-        grouped_clusters = self.group_engine.group_candidates(candidate_dicts)
-        groups_created = 0
-
-        for group_record, fact_ids in grouped_clusters:
-            try:
-                self.ledger.create_fact_group(
-                    entity=group_record.entity,
-                    attribute=group_record.attribute,
-                    period_id=group_record.period_id,
-                    fact_ids=fact_ids,
-                    group_id=group_record.group_id,
-                )
-                groups_created += 1
-            except Exception as e:
-                logger.warning(f"Failed to create fact group {group_record.group_id}: {e}")
+        # 3. Two-Tier Candidate Grouping (can be deferred for multi-document batching)
+        groups_created = 0 if defer_grouping else self.group_candidates()
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
@@ -171,3 +162,49 @@ class VerificationPipeline:
             "hallucinations_flagged": hallucinations_flagged,
             "latency_ms": round(latency_ms, 2),
         }
+
+    def group_candidates(self) -> int:
+        """Group all unassigned fact candidates across the ledger into dispute clusters."""
+        with self.ledger.transaction() as conn:
+            query = """
+                SELECT fc.fact_id, fc.observation_id, fc.normalized_value, fc.period_start, fc.period_end,
+                       o.entity, o.attribute, o.raw_value
+                FROM fact_candidates fc
+                JOIN observations o ON fc.observation_id = o.observation_id
+                WHERE fc.fact_id NOT IN (SELECT fact_id FROM group_members)
+            """
+            rows = conn.execute(query).fetchall()
+
+        if not rows:
+            logger.info("No unassigned fact candidates found for grouping.")
+            return 0
+
+        candidate_dicts = [
+            {
+                "fact_id": row["fact_id"],
+                "observation_id": row["observation_id"],
+                "entity": row["entity"],
+                "attribute": row["attribute"],
+                "raw_value": row["raw_value"],
+                "normalized_value": row["normalized_value"],
+                "period_start": row["period_start"],
+                "period_end": row["period_end"],
+            }
+            for row in rows
+        ]
+
+        grouped = self.group_engine.group_candidates(candidate_dicts)
+        groups_created = 0
+        for group_rec, fact_ids in grouped:
+            self.ledger.create_fact_group(
+                entity=group_rec.entity,
+                attribute=group_rec.attribute,
+                period_id=group_rec.period_id,
+                fact_ids=fact_ids,
+                group_id=group_rec.group_id,
+            )
+            groups_created += 1
+
+        logger.info(f"Created {groups_created} fact groups from {len(candidate_dicts)} unassigned candidates.")
+        return groups_created
+

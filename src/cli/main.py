@@ -30,23 +30,34 @@ def compute_file_hash(filepath: Path) -> str:
 
 def handle_process(args: argparse.Namespace) -> int:
     """Execute the process command on a PDF file or directory."""
-    target_path = Path(args.path)
-    if not target_path.exists():
-        print(f"Error: Target path '{target_path}' does not exist.", file=sys.stderr)
-        return 1
-
+    raw_paths = args.path if isinstance(args.path, list) else [args.path]
     pdf_files: list[Path] = []
-    if target_path.is_file():
-        if target_path.suffix.lower() == ".pdf":
-            pdf_files.append(target_path)
-        else:
-            print(f"Error: Target file '{target_path}' is not a PDF.", file=sys.stderr)
-            return 1
-    elif target_path.is_dir():
-        seen = set(); pdf_files = [p for p in sorted(target_path.iterdir()) if p.is_file() and p.suffix.lower() == ".pdf" and not (str(p.resolve()).lower() in seen or seen.add(str(p.resolve()).lower()))]
+    seen = set()
+
+    for raw in raw_paths:
+        target_path = Path(raw)
+        if not target_path.exists():
+            print(f"Warning: Target path '{target_path}' does not exist.", file=sys.stderr)
+            continue
+
+        if target_path.is_file():
+            if target_path.suffix.lower() == ".pdf":
+                resolved = str(target_path.resolve()).lower()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    pdf_files.append(target_path)
+            else:
+                print(f"Warning: File '{target_path}' is not a PDF.", file=sys.stderr)
+        elif target_path.is_dir():
+            for child in sorted(target_path.iterdir()):
+                if child.is_file() and child.suffix.lower() == ".pdf":
+                    resolved = str(child.resolve()).lower()
+                    if resolved not in seen:
+                        seen.add(resolved)
+                        pdf_files.append(child)
 
     if not pdf_files:
-        print(f"Warning: No PDF files found in '{target_path}'.", file=sys.stderr)
+        print("Error: No valid PDF files found to process.", file=sys.stderr)
         return 1
 
     # Initialize Run Context
@@ -80,7 +91,7 @@ def handle_process(args: argparse.Namespace) -> int:
         ledger.insert_document(doc_record)
 
         # Execute D2 Extraction Pipeline
-        max_chunks = None if getattr(args, "all_chunks", False) else getattr(args, "max_chunks", 15)
+        max_chunks = None if getattr(args, "all_chunks", False) else getattr(args, "max_chunks", 2)
         if getattr(args, "skip_llm", False):
             max_chunks = 0
 
@@ -88,8 +99,34 @@ def handle_process(args: argparse.Namespace) -> int:
             ledger=ledger,
             tracer=tracer,
             max_llm_chunks=max_chunks,
+            skip_verifier=getattr(args, "fast", False),
         )
-        pipeline.process_document(doc_id, dest_path)
+        pipeline.process_document(doc_id, dest_path, defer_reasoning=True)
+
+    # Multi-document fact grouping and adjudication
+    # pyrefly: ignore [missing-import]
+    from src.verification.pipeline import VerificationPipeline
+    # pyrefly: ignore [missing-import]
+    from src.decision.engine import FactDecisionEngine
+    # pyrefly: ignore [missing-import]
+    from src.observability.reports import ReportGenerator
+
+    verif_pipeline = VerificationPipeline(
+        ledger=ledger,
+        tracer=tracer,
+        skip_verifier=getattr(args, "fast", False),
+    )
+    verif_pipeline.group_candidates()
+
+    decision_engine = FactDecisionEngine(
+        ledger=ledger,
+        tracer=tracer,
+    )
+    decision_engine.process_fact_groups()
+
+    # Generate Markdown reports
+    report_gen = ReportGenerator(ledger, ctx)
+    report_gen.generate_all_reports()
 
     summary = ledger.get_job_summary()
     ctx.complete_run(summary=summary)
@@ -139,9 +176,26 @@ def handle_inspect(args: argparse.Namespace) -> int:
     print("=" * 75)
 
     for d in decisions:
+        card = ledger.get_decision_card(d['decision_id'])
         print(f"  Decision ID: {d['decision_id']}  |  Verdict: [{d['verdict']}]  |  Strength: {d['decision_strength']}")
         print(f"  Entity:      {d['entity']}  |  Attribute: {d['attribute']}  |  Period: {d['period_id']}")
         print(f"  Reasoning:   {d['reasoning_summary']}")
+
+        if card and card.get("claims"):
+            print("  Evaluated Facts:")
+            for idx, c in enumerate(card["claims"], start=1):
+                doc_cite = f"{c.get('filename', 'doc.pdf')} (p.{c.get('page_number', 1)})"
+                print(f"    [{idx}] Value: {c.get('normalized_value')} {c.get('normalized_unit')} {c.get('normalized_currency')} | Source: {doc_cite}")
+                if c.get("statement"):
+                    print(f"        Statement: {c['statement'][:100]}")
+
+        if card and card.get("hypotheses"):
+            print("  Tested Hypotheses:")
+            for h in card["hypotheses"]:
+                print(f"    - [{h.get('explanation_type')}] {h.get('description')} (likelihood: {h.get('likelihood_score')})")
+
+        if card and card.get("traces"):
+            print(f"  Audit Traces: {len(card['traces'])} reasoning steps recorded.")
         print("-" * 75)
 
     return 0
@@ -209,11 +263,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     # process subcommand
     proc_parser = subparsers.add_parser("process", help="Process a PDF file or directory of PDFs")
-    proc_parser.add_argument("path", help="Path to PDF file or directory containing PDFs")
+    proc_parser.add_argument("path", nargs="+", help="Path(s) to PDF file(s) or directories containing PDFs")
     proc_parser.add_argument("--out-dir", default="runs", help="Base directory for job runs (default: runs)")
-    proc_parser.add_argument("--max-chunks", type=int, default=15, help="Max candidate chunks for LLM extraction (default: 15)")
+    proc_parser.add_argument("--max-chunks", type=int, default=2, help="Max candidate chunks for LLM extraction (default: 2)")
     proc_parser.add_argument("--all-chunks", action="store_true", help="Extract all candidate chunks without limit")
     proc_parser.add_argument("--skip-llm", action="store_true", help="Extract layout chunks and tables only, skipping LLM")
+    proc_parser.add_argument("--fast", action="store_true", help="Fast mode: bypass secondary LLM verification pass to accelerate multi-document processing")
     proc_parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     # inspect subcommand
@@ -240,6 +295,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[list[str]] = None) -> int:
     """Main CLI entry point."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     parser = build_parser()
     args = parser.parse_args(argv)
 

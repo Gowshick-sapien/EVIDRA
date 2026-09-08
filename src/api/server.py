@@ -30,6 +30,12 @@ from src.db.ledger import DocumentRecord, EvidenceLedger
 # pyrefly: ignore [missing-import]
 from src.extraction.pipeline import ExtractionPipeline
 # pyrefly: ignore [missing-import]
+from src.verification.pipeline import VerificationPipeline
+# pyrefly: ignore [missing-import]
+from src.decision.engine import FactDecisionEngine
+# pyrefly: ignore [missing-import]
+from src.observability.reports import ReportGenerator
+# pyrefly: ignore [missing-import]
 from src.observability.trace import RunContext, TraceLogger
 
 
@@ -121,7 +127,16 @@ def create_app(runs_root: Path | str = "runs") -> FastAPI:
                     ledger.insert_document(doc_record)
                 except Exception:
                     pass
-                pipeline.process_document(doc_id, path)
+                pipeline.process_document(doc_id, path, defer_reasoning=True)
+
+            verif_pipeline = VerificationPipeline(ledger=ledger, tracer=tracer)
+            verif_pipeline.group_candidates()
+
+            decision_engine = FactDecisionEngine(ledger=ledger, tracer=tracer)
+            decision_engine.process_fact_groups()
+
+            report_gen = ReportGenerator(ledger, ctx)
+            report_gen.generate_all_reports()
 
             summary = ledger.get_job_summary()
             ctx.complete_run(summary=summary)

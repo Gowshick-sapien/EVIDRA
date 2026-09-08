@@ -1,0 +1,26 @@
+{
+  "job_id": "JOB-20260908-034754-34f962",
+  "status": "COMPLETED",
+  "created_at": "2026-09-08T03:47:54.120243+00:00",
+  "completed_at": "2026-09-08T03:53:07.436565+00:00",
+  "input_files": [
+    "01-delhivery-prospectus-2022-excerpt.pdf",
+    "02-delhivery-annual-report-fy24-excerpt.pdf",
+    "03-delhivery-q4-fy24-earnings-presentation.pdf"
+  ],
+  "summary": {
+    "documents_count": 3,
+    "evidence_chunks_count": 6553,
+    "observations_count": 33,
+    "fact_candidates_count": 33,
+    "fact_groups_count": 24,
+    "decisions_count": 24,
+    "verdicts": {
+      "CORROBORATED": 0,
+      "CONTRADICTION": 3,
+      "RECONCILED": 1,
+      "UNRESOLVED": 20
+    }
+  },
+  "errors": []
+}

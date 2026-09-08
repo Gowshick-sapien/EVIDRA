@@ -39,29 +39,35 @@ class ExtractionAgent:
             return ObservationBundle()
 
         if chunk.chunk_type == "table":
-            # For massive multi-page tables, limit rows to prevent local LLM generation timeout
             table_text = chunk.content
             lines = table_text.splitlines()
-            if len(lines) > 25:
-                table_text = "\n".join(lines[:25]) + "\n| ... [additional rows truncated for context] |"
+            if len(lines) > 12:
+                table_text = "\n".join(lines[:12]) + "\n| ... [rows truncated] |"
+            if len(table_text) > 800:
+                table_text = table_text[:800] + "\n... [table truncated]"
 
             prompt = (
                 f"DOCUMENT EVIDENCE CHUNK (TABLE on Page {chunk.page_number}):\n"
                 f"-----------------------------------------\n"
                 f"{table_text}\n"
                 f"-----------------------------------------\n\n"
-                f"Extract all numerical financial line items from this table as 'numerical_observations'. "
+                f"Extract the top 3-5 core financial metric line items (e.g., Revenue, EBITDA, PAT, Net Profit, Margin) "
+                f"as 'numerical_observations' with their exact period and unit. "
                 f"Include any specific notes or qualitative caveats present in the table as 'semantic_observations'."
             )
         else:
+            text_content = chunk.content
+            if len(text_content) > 800:
+                text_content = text_content[:800] + "\n... [text truncated]"
+
             prompt = (
                 f"DOCUMENT EVIDENCE CHUNK (TEXT on Page {chunk.page_number}):\n"
                 f"-----------------------------------------\n"
-                f"{chunk.content}\n"
+                f"{text_content}\n"
                 f"-----------------------------------------\n\n"
-                f"Extract all explicit financial metrics as 'numerical_observations', "
-                f"management commentary, accounting policies, or risk factors as 'semantic_observations', "
-                f"and discrete corporate actions/events as 'event_observations'."
+                f"Extract the top 3-5 explicit financial metrics (e.g., Revenue, EBITDA, PAT, Profit/Loss) "
+                f"as 'numerical_observations', "
+                f"and key management commentary, accounting policies, or risk factors as 'semantic_observations'."
             )
 
         try:
@@ -69,7 +75,7 @@ class ExtractionAgent:
                 prompt=prompt,
                 response_model=ObservationBundle,
                 system_prompt=EXTRACTION_SYSTEM_PROMPT,
-                max_retries=2,
+                max_retries=1,
             )
             return bundle
         except ExtractionParseError as e:

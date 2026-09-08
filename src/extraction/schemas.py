@@ -1,8 +1,19 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
-from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Literal, Optional
+from pydantic import BaseModel, Field, field_validator
+
+
+def _normalize_confidence(v: Any) -> float:
+    """Normalize confidence inputs, handling percentage scales (0-100) defensively."""
+    try:
+        val = float(v)
+        if val > 1.0:
+            val = val / 100.0
+        return max(0.0, min(1.0, val))
+    except (ValueError, TypeError):
+        return 1.0
 
 
 class BoundingBox(BaseModel):
@@ -61,6 +72,11 @@ class NumericalObservation(BaseModel):
     temporal_scope: str = Field(description="Fiscal period or point-in-time date (e.g. FY22, Q3 FY21, March 31, 2022)")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction confidence score")
 
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence(cls, v: Any) -> float:
+        return _normalize_confidence(v)
+
 
 class SemanticObservation(BaseModel):
     """A qualitative disclosure, accounting policy, risk factor, or management commentary."""
@@ -71,6 +87,11 @@ class SemanticObservation(BaseModel):
     temporal_scope: str = Field(description="Temporal applicability or reporting period")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction confidence score")
 
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence(cls, v: Any) -> float:
+        return _normalize_confidence(v)
+
 
 class EventObservation(BaseModel):
     """A discrete corporate action, leadership change, restructuring, or legal development."""
@@ -80,6 +101,11 @@ class EventObservation(BaseModel):
     raw_value: str = Field(description="Core event detail or transaction value")
     temporal_scope: str = Field(description="Date or time frame of occurrence (e.g. 2021-12-08, December 2021)")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence(cls, v: Any) -> float:
+        return _normalize_confidence(v)
 
 
 class ObservationBundle(BaseModel):

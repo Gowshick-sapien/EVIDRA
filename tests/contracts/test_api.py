@@ -114,3 +114,28 @@ def test_nonexistent_job_returns_404(client_and_root):
     client, _ = client_and_root
     resp = client.get("/jobs/JOB-DOES-NOT-EXIST")
     assert resp.status_code == 404
+
+
+def test_job_reports(client_and_root):
+    client, runs_root = client_and_root
+    job_id = "JOB-TEST-REPORTS"
+    job_dir = runs_root / job_id
+    reports_dir = job_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_path = reports_dir / "summary.md"
+    summary_path.write_text("# Executive Summary\n\nTest content.", encoding="utf-8")
+
+    # Success case
+    resp = client.get(f"/jobs/{job_id}/reports/summary")
+    assert resp.status_code == 200
+    assert "Executive Summary" in resp.text
+
+    # With .md extension explicitly
+    resp_ext = client.get(f"/jobs/{job_id}/reports/summary.md")
+    assert resp_ext.status_code == 200
+    assert "Executive Summary" in resp_ext.text
+
+    # Missing report
+    resp_missing = client.get(f"/jobs/{job_id}/reports/contradictions")
+    assert resp_missing.status_code == 404

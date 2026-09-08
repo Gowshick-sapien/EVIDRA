@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import re
@@ -44,6 +44,7 @@ class ExtractionPipeline:
         tracer: Optional[TraceLogger] = None,
         reasoning_service: Optional[ReasoningService] = None,
         max_llm_chunks: Optional[int] = None,
+        skip_verifier: bool = False,
     ):
         self.ledger = ledger
         self.tracer = tracer
@@ -51,6 +52,7 @@ class ExtractionPipeline:
         self.parser = PDFParser()
         self.agent = ExtractionAgent(self.llm)
         self.max_llm_chunks = max_llm_chunks  # Guardrail for selective inference
+        self.skip_verifier = skip_verifier
 
     @staticmethod
     def _is_extraction_candidate(block: ExtractedBlock) -> bool:
@@ -62,7 +64,35 @@ class ExtractionPipeline:
             return False
         return bool(FINANCIAL_INDICATORS.search(content))
 
-    def process_document(self, document_id: str, pdf_path: Path | str) -> dict[str, Any]:
+    @staticmethod
+    def _score_candidate(chunk: EvidenceChunk) -> int:
+        """Score candidate chunks by financial keyword density, numerical tokens, and concise length."""
+        content_lower = chunk.content.lower()
+        score = 0
+        keywords = (
+            "revenue", "ebitda", "operating income", "total income", "profit",
+            "loss", "balance sheet", "crore", "lakh", "million", "fy24", "fy23", "fy22", "q4"
+        )
+        for kw in keywords:
+            if kw in content_lower:
+                score += 2
+        num_digits = sum(c.isdigit() for c in chunk.content)
+        if num_digits > 15:
+            score += 3
+        if chunk.chunk_type == "table":
+            score += 2
+        if 200 <= len(chunk.content) <= 1800:
+            score += 4
+        elif len(chunk.content) > 3000:
+            score -= 5
+        return score
+
+    def process_document(
+        self,
+        document_id: str,
+        pdf_path: Path | str,
+        defer_reasoning: bool = False,
+    ) -> dict[str, Any]:
         """Execute full extraction workflow on a document and persist results to ledger."""
         path = Path(pdf_path)
         start_time = time.perf_counter()
@@ -127,15 +157,20 @@ class ExtractionPipeline:
 
         # Apply guardrail limit if specified
         if self.max_llm_chunks and len(candidate_pairs) > self.max_llm_chunks:
-            # Prioritize tables first, then narrative text with highest keyword density
-            candidate_pairs.sort(key=lambda pair: (0 if pair[0].chunk_type == "table" else 1))
+            # Prioritize chunks with highest financial keyword and numerical density
+            candidate_pairs.sort(key=lambda pair: self._score_candidate(pair[0]), reverse=True)
             candidate_pairs = candidate_pairs[: self.max_llm_chunks]
 
         # 4. Invoke extraction agents across candidates
         observations: list[ObservationRecord] = []
 
-        for chunk, _ in candidate_pairs:
+        for idx, (chunk, _) in enumerate(candidate_pairs, 1):
+            print(f"  -> Extracting {document_id} chunk {idx}/{len(candidate_pairs)} (Page {chunk.page_number}, {chunk.chunk_type})... ", end="", flush=True)
+            chunk_start = time.perf_counter()
             bundle = self.agent.extract_from_chunk(chunk)
+            chunk_time = time.perf_counter() - chunk_start
+            n_obs = len(bundle.numerical_observations) + len(bundle.semantic_observations) + len(bundle.event_observations)
+            print(f"done in {chunk_time:.1f}s ({n_obs} observations)")
 
             # Map Numerical Observations
             for num in bundle.numerical_observations:
@@ -226,8 +261,24 @@ class ExtractionPipeline:
             ledger=self.ledger,
             tracer=self.tracer,
             reasoning_service=self.llm,
+            skip_verifier=self.skip_verifier,
         )
-        verif_res = verif_pipeline.process_observations(document_id=document_id)
+        verif_res = verif_pipeline.process_observations(
+            document_id=document_id,
+            defer_grouping=defer_reasoning,
+        )
+
+        # 7. Execute D4 Fact Decision Engine (Layer 3)
+        dec_res = {}
+        if not defer_reasoning:
+            # pyrefly: ignore [missing-import]
+            from src.decision.engine import FactDecisionEngine
+            decision_engine = FactDecisionEngine(
+                ledger=self.ledger,
+                reasoning_service=self.llm,
+                tracer=self.tracer,
+            )
+            dec_res = decision_engine.process_fact_groups()
 
         return {
             "document_id": document_id,
@@ -236,5 +287,6 @@ class ExtractionPipeline:
             "observations_count": observations_inserted,
             "fact_candidates_count": verif_res.get("candidates_count", 0),
             "fact_groups_count": verif_res.get("groups_count", 0),
+            "decisions_count": dec_res.get("decisions_evaluated", 0),
             "latency_ms": round(latency_ms, 2),
         }

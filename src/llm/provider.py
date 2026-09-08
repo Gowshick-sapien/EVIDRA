@@ -39,7 +39,7 @@ class OllamaProvider:
         self,
         base_url: str = "http://127.0.0.1:11434",
         model_name: str = "qwen2.5:3b",
-        timeout_seconds: int = 90,
+        timeout_seconds: int = 60,
     ):
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name

@@ -80,14 +80,24 @@ class TableExtractor:
         # Try default line-based extraction first
         tables = page.find_tables(table_settings=self.table_settings)
         
-        # Fallback to text-based layout if no line-based tables are discovered
-        if not tables:
+        # Optional text-based fallback only when explicitly enabled in settings
+        if not tables and self.table_settings.get("use_text_fallback", False):
             fallback_settings = {
                 "vertical_strategy": "text",
                 "horizontal_strategy": "text",
+                "min_words_vertical": 3,
                 "snap_tolerance": 4,
             }
-            tables = page.find_tables(table_settings=fallback_settings)
+            cand_tables = page.find_tables(table_settings=fallback_settings)
+            tables = []
+            for tbl in cand_tables:
+                raw_data = tbl.extract()
+                if raw_data and len(raw_data) >= 2 and len(raw_data[0]) >= 2:
+                    cell_texts = [str(c or "").strip() for row in raw_data for c in row if c]
+                    if cell_texts:
+                        avg_len = sum(len(c) for c in cell_texts) / len(cell_texts)
+                        if len(raw_data[0]) <= 8 and avg_len >= 3.0:
+                            tables.append(tbl)
 
         for tbl in tables:
             bbox = tbl.bbox  # (x0, top, x1, bottom)

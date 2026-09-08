@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import uuid
@@ -8,7 +8,22 @@ import numpy as np
 # pyrefly: ignore [missing-import]
 from src.db.ledger import FactGroupRecord
 
+import re
+
 logger = logging.getLogger(__name__)
+
+
+def normalize_entity_name(entity: str) -> str:
+    """Standardize corporate entity names for blocking."""
+    raw = str(entity or "").strip().lower()
+    if not raw or raw in ("reporting entity", "the company", "company", "management"):
+        return "reporting entity"
+    # Strip punctuation
+    raw = re.sub(r"[^\w\s]", " ", raw)
+    # Strip legal entity suffixes
+    raw = re.sub(r"\b(limited|ltd|inc|incorporated|corp|corporation|company|co|llc|holdings|group)\b", "", raw)
+    raw = " ".join(raw.split())
+    return raw or "reporting entity"
 
 
 class FactGroupEngine:
@@ -52,10 +67,10 @@ class FactGroupEngine:
         if not candidates:
             return []
 
-        # 1. Tier 1: Hard Blocking on exact entity and temporal interval
+        # 1. Tier 1: Hard Blocking on normalized entity and temporal interval
         partitions: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
         for c in candidates:
-            entity_norm = str(c.get("entity", "")).strip().lower()
+            entity_norm = normalize_entity_name(c.get("entity", ""))
             p_start = str(c.get("period_start", ""))
             p_end = str(c.get("period_end", ""))
             key = (entity_norm, p_start, p_end)

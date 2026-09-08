@@ -1,0 +1,13 @@
+{
+  "job_id": "JOB-20260907-195859-f7e3e0",
+  "status": "PROCESSING",
+  "created_at": "2026-09-07T19:58:59.792460+00:00",
+  "completed_at": null,
+  "input_files": [
+    "01-delhivery-prospectus-2022-excerpt.pdf",
+    "02-delhivery-annual-report-fy24-excerpt.pdf",
+    "03-delhivery-q4-fy24-earnings-presentation.pdf"
+  ],
+  "summary": {},
+  "errors": []
+}
